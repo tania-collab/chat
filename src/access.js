@@ -11,36 +11,48 @@ export function accessConfigured(env) {
   return Boolean(env.ACCESS_TEAM_DOMAIN && env.ACCESS_AUD);
 }
 
-export async function accessEmail(request, env) {
+// Returns {email} for a valid sign-in, or {problem}: a plain-language reason for the person setting it up.
+export async function accessCheck(request, env) {
   const token = request.headers.get("cf-access-jwt-assertion");
-  if (!token) return null;
+  if (!token) {
+    return { problem: "Cloudflare Access didn't sign you in. Check that the chat app's Access policy is Allow, not Bypass." };
+  }
   const parts = token.split(".");
-  if (parts.length !== 3) return null;
-
   let header, payload;
   try {
+    if (parts.length !== 3) throw new Error("not a JWT");
     header = JSON.parse(textFromBase64Url(parts[0]));
     payload = JSON.parse(textFromBase64Url(parts[1]));
   } catch {
-    return null;
+    return { problem: "The sign-in token from Cloudflare Access couldn't be read." };
   }
-  if (header.alg !== "RS256") return null;
+  if (header.alg !== "RS256") return { problem: "The sign-in token uses an unexpected signature type." };
 
   const domain = teamDomain(env.ACCESS_TEAM_DOMAIN);
+  if (payload.iss !== `https://${domain}`) {
+    const issuer = String(payload.iss || "").replace(/^https:\/\//, "");
+    return { problem: `ACCESS_TEAM_DOMAIN is "${domain}", but this sign-in comes from "${issuer}". Set ACCESS_TEAM_DOMAIN to ${issuer} and deploy.` };
+  }
   const jwk = await signingKey(domain, header.kid);
-  if (!jwk) return null;
+  if (!jwk) return { problem: `Couldn't get Cloudflare Access's signing keys for "${domain}". Check ACCESS_TEAM_DOMAIN.` };
   const key = await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
   const signed = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
-  const valid = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, bytesFromBase64Url(parts[2]), signed);
-  if (!valid) return null;
+  if (!(await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, bytesFromBase64Url(parts[2]), signed))) {
+    return { problem: "The sign-in token's signature is not valid." };
+  }
 
-  const now = Date.now() / 1000;
+  // The token is genuine from here on, so its audience can be shown as a hint.
   const audiences = Array.isArray(payload.aud) ? payload.aud : [payload.aud];
-  if (!audiences.includes(env.ACCESS_AUD)) return null;
-  if (payload.iss !== `https://${domain}`) return null;
-  if (typeof payload.exp !== "number" || payload.exp < now) return null;
-  if (typeof payload.nbf === "number" && payload.nbf > now + 60) return null;
-  return typeof payload.email === "string" && payload.email ? payload.email.toLowerCase() : null;
+  if (!audiences.includes(String(env.ACCESS_AUD).trim())) {
+    return { problem: `ACCESS_AUD doesn't match this Access application. Set ACCESS_AUD to ${audiences[0]} and deploy.` };
+  }
+  const now = Date.now() / 1000;
+  if (typeof payload.exp !== "number" || payload.exp < now) return { problem: "Your sign-in has expired. Reload the page." };
+  if (typeof payload.nbf === "number" && payload.nbf > now + 60) return { problem: "Your sign-in isn't valid yet. Check your computer's clock." };
+  if (typeof payload.email !== "string" || !payload.email) {
+    return { problem: "The sign-in has no email address. Sign in with an email, not a service token." };
+  }
+  return { email: payload.email.toLowerCase() };
 }
 
 async function signingKey(domain, kid) {
