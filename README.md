@@ -37,6 +37,13 @@ Messages about one task share a Google Chat thread. To tell what changed, the ap
 the 300 most recently seen tasks per chat. Messages still on an earlier default switch to the current one;
 edited messages stay as written.
 
+**Weekly digest** (Mondays 8:30am Pacific, on by default per chat): one card with what's open per person
+(overdue first, with "overdue since Fri" / "due Wed"), how many are due this week, and last week's new and
+finished counts. People with overdue tasks are @mentioned when their chat id is on file. **Send digest now**
+on a chat's card posts it right away. The digest only knows tasks zInspector has sent since the chat was
+connected; older tasks join as soon as they're updated. The schedule is the `[triggers]` cron in
+`wrangler.toml`.
+
 **What a chat hears about** is set per chat:
 
 - **Post task alerts for**: tasks with someone assigned (default), with someone assigned or a next to-do, or all
@@ -155,6 +162,7 @@ them in every account.
 | `src/messages.js` | events, default copy, the template engine, @mentions, threads |
 | `src/taskview.js` | task state, what changed, ready-made values |
 | `src/cards.js` | the Google Chat card (and its Slack text version) |
+| `src/digest.js` | the weekly digest |
 | `src/legacy.js` | earlier default copy, to move unedited messages forward |
 | `src/store.js` | connections, settings, logs and last events in KV, input checks |
 | `src/admin.js` | the admin page (HTML + JS) |

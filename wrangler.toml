@@ -8,3 +8,8 @@ keep_vars = true
 # Connections, settings and delivery logs. Without an id, Wrangler creates the namespace on first deploy.
 [[kv_namespaces]]
 binding = "RELAY"
+
+# Weekly digest: Mondays 8:30am Pacific. Both times are listed because UTC-7 / UTC-8 change with daylight
+# saving; the worker only sends at the one that is 8:30 in Los Angeles.
+[triggers]
+crons = ["30 15 * * 1", "30 16 * * 1"]

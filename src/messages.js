@@ -161,6 +161,7 @@ export const ALERTS = {
   completed: { label: "Finished tasks (a done status)", on: true },
   changes: { label: "Other changes (status, dates, priority…)", on: false },
   messages: { label: "New messages on a task", on: false },
+  digest: { label: "Weekly digest (Mondays 8:30am Pacific)", on: true },
 };
 
 export function alertsOf(connection) {
@@ -205,7 +206,7 @@ function personKey(p) {
   return p ? (p.email || p.name || "").toLowerCase() : "";
 }
 
-function matchesAudience(snapshot, audience) {
+export function matchesAudience(snapshot, audience) {
   if (audience === "all") return true;
   if (!snapshot) return false;
   return Boolean(snapshot.assignee || (audience === "assigned-or-next" && snapshot.next));
@@ -319,7 +320,7 @@ function valueText(v) {
   return JSON.stringify(v);
 }
 
-function mentionFor(person, people = [], platform) {
+export function mentionFor(person, people = [], platform) {
   if (!person) return null;
   const email = baseEmail(person.email);
   const match = email && people.find((p) => baseEmail(p.email) === email);
@@ -333,6 +334,6 @@ function baseEmail(email) {
   return email ? String(email).toLowerCase().replace(/\+[^@]*(?=@)/, "") : "";
 }
 
-function taskUrl(id, template) {
+export function taskUrl(id, template) {
   return template && id != null ? template.replace("{id}", encodeURIComponent(id)) : null;
 }
