@@ -7,7 +7,7 @@
 // Sign-in: Cloudflare Access (ACCESS_TEAM_DOMAIN + ACCESS_AUD) when set, else the ADMIN_PASSWORD secret.
 // Bindings: KV namespace RELAY.
 
-import { buildMessage, skipReason, SKIP_REASONS, AUDIENCES, eventKind, deliveryUrl, render, fieldPaths, templateFor, EVENTS, EXAMPLES, EXAMPLE_PREVIOUS, TEST_MESSAGE } from "./messages.js";
+import { buildMessage, skipReason, SKIP_REASONS, AUDIENCES, ALERTS, alertsOf, eventKind, deliveryUrl, render, fieldPaths, templateFor, EVENTS, EXAMPLES, EXAMPLE_PREVIOUS, TEST_MESSAGE } from "./messages.js";
 import { snapshotOf, EXTRA_NAMES } from "./taskview.js";
 import {
   getConnections,
@@ -124,12 +124,14 @@ async function api(request, env, url, user) {
       connections: (await getConnections(kv)).map((c) => ({
         ...c,
         templates: Object.fromEntries(EVENTS.map((e) => [e.key, templateFor(c, e.key)])),
+        alerts: alertsOf(c),
       })),
       settings: await getSettings(kv),
       hookBase: `${url.origin}/hook/`,
       user: user.email,
       events: EVENTS,
       audiences: AUDIENCES,
+      alerts: ALERTS,
       skipReasons: SKIP_REASONS,
     });
   }

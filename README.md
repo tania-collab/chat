@@ -20,12 +20,16 @@ Each event has its own message, short because a task's messages share one Google
 | any other event | 🔔 *event name* · property |
 | Send test | ✅ zInspector is connected to this chat. |
 
-**Which tasks a chat hears about** is set per chat (**Post task alerts for**): tasks with someone assigned
-or a next to-do (default), tasks with someone assigned, or all tasks. A task that doesn't match is remembered
-but not posted; when someone is taken off a task the chat followed, that is posted. The first time the app
-sees a task through an update (for example a bulk clean-up of old tasks), it remembers it without posting, so
-only tasks the chat already knew can show changes or a completion. Recent deliveries says why each alert
-wasn't posted.
+**What a chat hears about** is set per chat:
+
+- **Post task alerts for**: tasks with someone assigned (default), with someone assigned or a next to-do, or all
+  tasks. In zInspector, incoming emails get a next to-do automatically, so "assigned" keeps the chat to real work.
+- **Post these alerts**: new tasks ✓, newly assigned tasks ✓, finished tasks ✓ (a "done" status), other changes
+  (status, dates, priority…) and new messages on a task. The last two are off by default.
+
+Every update is still tracked (that's how "finished" and "newly assigned" are detected), just not posted. The
+first time the app sees a task through an update (for example a bulk clean-up of old tasks), it remembers it
+without posting. Recent deliveries says why each alert wasn't posted.
 
 The assignee is @mentioned on a new task, when a task is assigned to them, and on completion, not on every
 update. To tell what changed, the app remembers the last state of the 300 most recently seen tasks per chat.
