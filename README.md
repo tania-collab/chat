@@ -33,7 +33,7 @@ On the admin page you can:
 
 - `{{data.propertyName}}` puts in a value from the event; `{{data.status}}` shows a status's name, `{{data.assignedTo}}`
   a person's name.
-- `{{mention}}` @mentions the assignee (see People below); `{{taskLink}}` is the task link from Settings.
+- `{{mention}}` @mentions the assignee (see People below); `{{taskLink}}` is the task's page in zInspector.
 - A line, or a part of a line between ` · `, is left out when one of its fields is empty.
 - Formatting: `*bold*`, `_italic_`, `<https://link|text>`.
 
@@ -96,8 +96,8 @@ rather than opening up.
 
 | Setting | What it does |
 |---|---|
-| Task link | Adds an "Open in zInspector" link to each message. `{id}` becomes the task id. |
-| "Done" statuses | Status names that post the celebration (default `Completed,Closed`). |
+| Task link | The "Open in zInspector" link in task messages, `https://dashboard.zinspector.com/task/view/{id}` by default; `{id}` becomes each task's number. |
+| "Done" statuses | A Task updated to one of these posts the Task completed message (default `Work Complete,Closed`; Canceled and Deferred don't). |
 | People | zInspector email → Google Chat user id and/or Slack member id, for real @mentions. Without an id the name shows in bold. Google Chat needs the numeric id (Admin console or Directory API), not the email. |
 
 ## Good to know

@@ -10,7 +10,9 @@ export const PLATFORMS = {
   slack: { label: "Slack", urlPrefix: "https://hooks.slack.com/" },
 };
 
-export const DEFAULT_COMPLETED = "Completed,Closed";
+// zInspector's finished statuses that mean the work got done (Canceled and Deferred don't celebrate).
+export const DEFAULT_COMPLETED = "Work Complete,Closed";
+export const DEFAULT_TASK_URL = "https://dashboard.zinspector.com/task/view/{id}";
 export const TEST_MESSAGE = "✅ zInspector is connected to this chat.";
 export const MAX_TEMPLATE = 4000;
 
@@ -117,7 +119,7 @@ const TASK_EXAMPLE = {
 export const EXAMPLES = {
   "task.created": { type: "task.created", data: TASK_EXAMPLE },
   "task.updated": { type: "task.updated", data: { ...TASK_EXAMPLE, status: { id: 2, value: "In Progress" } } },
-  "task.completed": { type: "task.updated", data: { ...TASK_EXAMPLE, status: { id: 9, value: "Completed" } } },
+  "task.completed": { type: "task.updated", data: { ...TASK_EXAMPLE, status: { id: 5, value: "Work Complete" } } },
   "task.message.created": { type: "task.message.created", data: { ...TASK_EXAMPLE, message: "Can we move this to Friday?" } },
   "report.distributed": { type: "report.distributed", data: { propertyName: "Marketing.Conferences", propertyAddress: "123 Jones, Davis, CA 95616, US", referenceNumber: "313307" } },
   "zdata.changed": { type: "zdata.changed", data: { propertyName: "Marketing.Conferences", area: "Account", detail: "Software in use", zData: "AppFolio", actionType: "Updated" } },

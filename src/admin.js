@@ -79,11 +79,10 @@ export const ADMIN_HTML = String.raw`<!doctype html>
   <h2>Optional settings</h2>
   <p class="lead" style="margin-top:-6px">Messages work without these. Fill them in to add task links and real @mentions.</p>
   <form class="card" id="settings">
-    <label for="taskUrl">Task link <span class="hint">adds an "Open in zInspector" link to task messages.
-      Open any task in zInspector, copy the address from the browser bar, and replace the task number with {id}:
-      each message then links to its own task.</span></label>
-    <input type="url" id="taskUrl" placeholder="Leave empty for no link">
-    <label for="completedStatuses">"Done" statuses <span class="hint">comma-separated status names that post the celebration</span></label>
+    <label for="taskUrl">Task link <span class="hint">the "Open in zInspector" link in task messages; {id} becomes each task's number.
+      Only change it if zInspector's task pages move.</span></label>
+    <input type="url" id="taskUrl">
+    <label for="completedStatuses">"Done" statuses <span class="hint">a Task updated to one of these (comma-separated) posts the Task completed message</span></label>
     <input type="text" id="completedStatuses">
     <label>People <span class="hint">for @mentions that notify the assignee; without an id their name shows in bold.
       Google Chat user id: in admin.google.com → Directory → Users, click the person; it's the long number at the end of the address.</span></label>
