@@ -66,6 +66,22 @@ test("refuses requests without a valid Access sign-in", async () => {
   }
 });
 
+test("says which setting to fix when the sign-in doesn't match", async () => {
+  const e = env();
+  const text = async (jwt) => (await call(e, jwt)).text();
+  assert.match(await text(null), /policy is Allow, not Bypass/);
+  assert.match(await text(await token({ aud: ["the-real-aud"] })), /Set ACCESS_AUD to the-real-aud/);
+  assert.match(
+    await text(await token({ iss: "https://other.cloudflareaccess.com" })),
+    /Set ACCESS_TEAM_DOMAIN to other\.cloudflareaccess\.com/,
+  );
+});
+
+test("accepts settings pasted with https:// or stray spaces", async () => {
+  const e = { ...env(), ACCESS_TEAM_DOMAIN: ` https://${TEAM}/ `, ACCESS_AUD: ` ${AUD} ` };
+  assert.equal((await call(e, await token())).status, 200);
+});
+
 test("the password no longer opens the app once Access is set", async () => {
   const res = await worker.fetch(
     new Request(ORIGIN + "/api/state", { headers: { Authorization: "Basic " + btoa("me:pw") } }),

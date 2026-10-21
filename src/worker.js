@@ -19,7 +19,7 @@ import {
   cleanSettings,
 } from "./store.js";
 import { ADMIN_HTML } from "./admin.js";
-import { accessConfigured, accessEmail } from "./access.js";
+import { accessConfigured, accessCheck } from "./access.js";
 
 export default {
   async fetch(request, env) {
@@ -30,9 +30,7 @@ export default {
         return text("Setup is not finished: add the RELAY KV binding, and Cloudflare Access or the ADMIN_PASSWORD secret.", 503);
       }
       const user = await signedInUser(request, env);
-      if (!user && accessConfigured(env)) {
-        return text("Sign in through Cloudflare Access to use this app.", 403);
-      }
+      if (user?.problem) return text(`Sign-in didn't work: ${user.problem}`, 403);
       if (!user) {
         return new Response("Password required", {
           status: 401,
@@ -178,12 +176,10 @@ async function api(request, env, url, user) {
   return json({ error: "Not found" }, 404);
 }
 
-// The signed-in person ({email}), or null. With a password there's no email: {email: null}.
+// The signed-in person ({email}), {problem} when the Access sign-in fails, or null without a password.
+// With a password there's no email: {email: null}.
 async function signedInUser(request, env) {
-  if (accessConfigured(env)) {
-    const email = await accessEmail(request, env);
-    return email ? { email } : null;
-  }
+  if (accessConfigured(env)) return accessCheck(request, env);
   return passwordOk(request, env) ? { email: null } : null;
 }
 
