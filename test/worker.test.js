@@ -8,7 +8,6 @@ const marketing = {
   platform: "google-chat",
   chatUrl: GCHAT_URL,
   token: "secret-1",
-  events: { created: true, updated: false, completed: true },
 };
 
 async function addConnection(env, body = marketing) {
@@ -56,18 +55,43 @@ test("relays a new task to the connection's chat and logs it", async () => {
     assert.match(calls[0].body.text, /We have a new task/);
   });
   const log = await (await admin(env, "GET", `/api/connections/${c.id}/log`)).json();
-  assert.deepEqual([log[0].kind, log[0].ref, log[0].ok], ["created", "313307", true]);
+  assert.deepEqual([log[0].kind, log[0].ref, log[0].ok], ["task.created", "313307", true]);
 });
 
-test("skips alerts the connection has turned off", async () => {
+test("posts every event zInspector sends, each with its own message", async () => {
   const env = makeEnv();
   const c = await addConnection(env);
   await withChat(200, async (calls) => {
-    assert.equal((await hook(env, c.id, withStatus("In Progress"), "secret-1")).status, 200);
-    assert.equal(calls.length, 0);
+    await hook(env, c.id, withStatus("In Progress"), "secret-1");
     await hook(env, c.id, withStatus("Completed"), "secret-1");
-    assert.match(calls[0].body.text, /Task completed/);
+    await hook(env, c.id, { type: "zdata.changed", data: { area: "Account", detail: "Notes", actionType: "Updated" } }, "secret-1");
+    assert.deepEqual(
+      calls.map((call) => call.body.text.split("\n")[0]),
+      ["✏️ *Task updated:* Marketing Required", "🎉 🎉 *Task completed!* 🎉 🎉", "🗂️ *zData Updated:* Account › Notes"],
+    );
   });
+});
+
+test("edited copy is saved and used for the next event", async () => {
+  const env = makeEnv();
+  const c = await addConnection(env, { ...marketing, templates: { "task.created": "Hi {{data.assignedTo}}" } });
+  await withChat(200, async (calls) => {
+    await hook(env, c.id, created, "secret-1");
+    assert.equal(calls[0].body.text, "Hi Tania Aquirre");
+  });
+});
+
+test("preview uses example data first, then the last real event of that kind", async () => {
+  const env = makeEnv();
+  const c = await addConnection(env);
+  const ask = async () =>
+    (await admin(env, "POST", "/api/preview", { connectionId: c.id, kind: "task.message.created", template: "{{data.comment}}" })).json();
+  assert.deepEqual([(await ask()).source, (await ask()).text], ["example", ""]);
+  const real = { type: "task.message.created", data: { id: 1, comment: "On my way" } };
+  await withChat(200, () => hook(env, c.id, real, "secret-1"));
+  const after = await ask();
+  assert.deepEqual([after.source, after.text], ["real", "On my way"]);
+  assert.ok(after.fields.includes("data.comment"));
 });
 
 test("refuses a wrong token and an unknown connection without posting", async () => {

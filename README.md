@@ -1,28 +1,48 @@
 # zInspector → Chat
 
-A small web app that sends zInspector task alerts into Google Chat and Slack, for as many chats as you like.
+A small web app that turns zInspector webhooks into Google Chat and Slack messages, for as many chats as you like.
 
 zInspector's webhooks send a raw event that chat apps reject. This app sits in between: each **connection**
-has its own address that you paste into a zInspector webhook. When an event arrives, the app checks the
-webhook token, writes a readable message, and posts it to that connection's chat.
+has its own address that you paste as the **Destination URL** of a zInspector webhook. zInspector decides
+which events it sends (events and filters are set on its Edit Webhook screen); the app checks the webhook
+token, writes the message for that event, and posts it to the connection's chat.
 
-| zInspector event | Message |
+Each event has its own message, with default copy you can edit per connection:
+
+| zInspector event | Default message starts with |
 |---|---|
-| `task.created` | ✨ *We have a new task!* with type, property, assignee, status, priority, ref, description |
-| `task.updated`, status is a "done" status | 🎉 *Task completed!* |
-| `task.updated`, any other status | ✏️ *Task updated:* with the current status |
-| `webhook.test` (zInspector's **Send test**) | ✅ zInspector is connected to this chat. |
+| Task created (`task.created`) | ✨ *We have a new task!* |
+| Task updated (`task.updated`) | ✏️ *Task updated:* |
+| Task updated to a "done" status | 🎉 *Task completed!* |
+| New task message (`task.message.created`) | 💬 *New message on a task:* |
+| Reports distributed (`report.distributed`) | 📄 *A report was sent* |
+| zData changed (`zdata.changed`) | 🗂️ *zData Updated:* area › detail |
+| any other event | 🔔 *zInspector: event name* |
+| Send test (`webhook.test`) | ✅ zInspector is connected to this chat. |
 
 On the admin page you can:
 
-- add, edit and delete connections (Google Chat or Slack), and pick which alerts each gets,
-- copy each connection's address for zInspector,
+- add, edit and delete connections (Google Chat or Slack),
+- copy each connection's Destination URL for zInspector,
+- edit each event's message with a live preview; once a real event of that kind arrives, the preview uses it
+  and lists its fields, so you can click a field to insert it,
 - send a test message and see the last 20 deliveries (with the chat's error when one fails),
 - set the task link, which statuses count as "done", and people's chat ids for real @mentions.
 
-Google Chat messages for the same task stack in one thread. Empty fields are left out.
+### Message templates
 
-It runs on Cloudflare Workers (free plan) with Workers KV for storage. No other server.
+- `{{data.propertyName}}` puts in a value from the event; `{{data.status}}` shows a status's name, `{{data.assignedTo}}`
+  a person's name.
+- `{{mention}}` @mentions the assignee (see People below); `{{taskLink}}` is the task link from Settings.
+- A line, or a part of a line between ` · `, is left out when one of its fields is empty.
+- Formatting: `*bold*`, `_italic_`, `<https://link|text>`.
+
+The default copy for New task message and Reports distributed guesses some field names (`data.message`),
+because zInspector's docs don't list those payloads. After the first real one arrives, open **Edit messages**
+and pick the right fields from the list.
+
+Google Chat messages for the same task stack in one thread. It runs on Cloudflare Workers (free plan) with
+Workers KV for storage. No other server.
 
 ## Put it online (one time, about 10 minutes)
 
@@ -43,9 +63,9 @@ If the first build fails on the KV namespace, create one by hand (**Storage & Da
 1. **Get the chat's webhook URL.**
    Google Chat: open the space → space name → **Apps & integrations** → **Webhooks** → **Add webhook**.
    Slack: create an app with **Incoming Webhooks** turned on and add one for the channel.
-2. In the app, click **Add a chat**, paste the URL, set a token, and pick the alerts.
-3. In zInspector, add a webhook with the connection's **Address for zInspector**, the same token, and the events
-   **Task created** and **Task updated**. Press **Send test**.
+2. In the app, click **Add a chat**, paste the URL and set a token.
+3. In zInspector's **Edit Webhook**, set the **Destination URL** to the connection's address, use the same
+   token, and pick the events and filters there. Press **Send test**.
 
 ## Settings
 
@@ -72,6 +92,6 @@ If the first build fails on the KV namespace, create one by hand (**Storage & Da
 | File | What |
 |---|---|
 | `src/worker.js` | routes: `/hook/<id>` relay, `/` admin page, `/api/...` |
-| `src/messages.js` | message wording per event, @mentions, threads |
-| `src/store.js` | connections, settings and logs in KV, input checks |
+| `src/messages.js` | events, default copy, the template engine, @mentions, threads |
+| `src/store.js` | connections, settings, logs and last events in KV, input checks |
 | `src/admin.js` | the admin page (HTML + JS) |

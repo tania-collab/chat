@@ -52,7 +52,15 @@ export const ADMIN_HTML = String.raw`<!doctype html>
   .scroll { overflow-x: auto; }
   .empty { color: var(--muted); text-align: center; padding: 24px; }
   dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--text);
-           width: min(560px, calc(100vw - 32px)); padding: 20px; }
+           width: min(760px, calc(100vw - 32px)); padding: 20px; }
+  textarea { width: 100%; min-height: 200px; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text);
+             background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; resize: vertical; }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 640px) { .split { grid-template-columns: 1fr; } }
+  .preview { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg); border: 1px solid var(--line);
+             border-radius: 8px; padding: 8px 10px; min-height: 200px; font-size: 14px; }
+  .fields { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .fields button { font: 12px ui-monospace, Menlo, monospace; padding: 2px 8px; border-radius: 999px; background: var(--chip); }
   dialog::backdrop { background: rgba(0,0,0,.4); }
   ol.steps { padding-left: 20px; margin: 0; } ol.steps li { margin-bottom: 6px; }
 </style>
@@ -60,7 +68,7 @@ export const ADMIN_HTML = String.raw`<!doctype html>
 <body>
 <main>
   <h1>zInspector → Chat</h1>
-  <p class="lead">Each connection sends zInspector task alerts to one chat. Paste its address into a zInspector webhook.</p>
+  <p class="lead">Each connection turns one zInspector webhook into messages in one chat. zInspector decides which events it sends; here you set the chat and the wording.</p>
 
   <div class="row" style="margin-top:24px">
     <h2 class="grow" style="margin:0">Connections</h2>
@@ -92,8 +100,9 @@ export const ADMIN_HTML = String.raw`<!doctype html>
     <ol class="steps">
       <li>In your chat, create an incoming webhook. Google Chat: space name → Apps &amp; integrations → Webhooks. Slack: an app with Incoming Webhooks.</li>
       <li>Click <b>Add a chat</b> here and paste that webhook URL.</li>
-      <li>In zInspector, add a webhook with this connection's address, the same token, and the events <b>Task created</b> and <b>Task updated</b>.</li>
+      <li>In zInspector's <b>Edit Webhook</b>, paste the connection's <b>Destination URL</b>, use the same token, and pick the events and filters you want there.</li>
       <li>Press <b>Send test</b> in zInspector. "✅ zInspector is connected to this chat." should appear.</li>
+      <li>Click <b>Edit messages</b> to change the wording of each event. After a real event arrives, its preview and field list use zInspector's own data.</li>
     </ol>
   </div>
 </main>
@@ -112,12 +121,24 @@ export const ADMIN_HTML = String.raw`<!doctype html>
     <input type="url" id="f-chatUrl" required>
     <label for="f-token">zInspector webhook token <span class="hint">the token set on the zInspector webhook; alerts without it are refused</span></label>
     <input type="password" id="f-token" autocomplete="off">
-    <label>Send these alerts</label>
-    <div class="checks">
-      <label><input type="checkbox" id="f-created"> New task</label>
-      <label><input type="checkbox" id="f-updated"> Task updated</label>
-      <label><input type="checkbox" id="f-completed"> Task completed</label>
+    <h2 style="margin:24px 0 4px">Messages</h2>
+    <div class="hint">{{field}} puts in a value from the event. A line, or a part of a line between " · ", is left out when one of its fields is empty.
+      Extras: {{mention}} @mentions the assignee, {{taskLink}} is the task link from Settings. Formatting: *bold*, _italic_, &lt;link|text&gt;.</div>
+    <label for="f-event">Event</label>
+    <select id="f-event"></select>
+    <div class="hint" id="f-eventHint"></div>
+    <div class="split" style="margin-top:8px">
+      <div>
+        <div class="row"><b class="grow">Message</b><button type="button" id="f-reset">Reset to default</button></div>
+        <textarea id="f-template" spellcheck="false" style="margin-top:6px"></textarea>
+      </div>
+      <div>
+        <div class="row"><b class="grow">Preview</b><span class="hint" id="f-source"></span></div>
+        <div class="preview" id="f-preview" style="margin-top:6px"></div>
+      </div>
     </div>
+    <div class="hint" style="margin-top:8px">Fields in this event (click to insert):</div>
+    <div class="fields" id="f-fields"></div>
     <div class="msg bad" id="formMsg"></div>
     <div class="row" style="margin-top:16px; justify-content:flex-end">
       <button type="button" id="cancel">Cancel</button>
@@ -183,10 +204,6 @@ function connectionCard(c) {
   var hookUrl = state.hookBase + c.id;
   var msg = el("div", { "class": "msg" });
   var logBox = el("div", { "class": "scroll", style: "display:none; margin-top:12px" });
-  var chips = [["created", "New task"], ["updated", "Updated"], ["completed", "Completed"]].map(function (e) {
-    var on = c.events && c.events[e[0]];
-    return el("span", { "class": "chip" + (on ? " on" : ""), text: (on ? "✓ " : "✕ ") + e[1] });
-  });
 
   function flash(text, ok) { msg.className = "msg " + (ok ? "ok" : "bad"); msg.textContent = text; }
 
@@ -195,10 +212,10 @@ function connectionCard(c) {
       el("span", { "class": "name grow", text: c.name }),
       el("span", { "class": "chip on", text: PLATFORM[c.platform] || c.platform })
     ]),
-    el("div", { "class": "row", style: "margin:8px 0" }, chips.concat([
-      c.token ? null : el("span", { "class": "chip", style: "color:var(--bad)", text: "No token: anyone with the address can post" })
-    ])),
-    el("label", { text: "Address for zInspector", style: "margin-top:4px" }),
+    c.token ? null : el("div", { "class": "row", style: "margin-top:8px" }, [
+      el("span", { "class": "chip", style: "color:var(--bad)", text: "No token: anyone with the address can post" })
+    ]),
+    el("label", { text: "Destination URL for zInspector", style: "margin-top:8px" }),
     el("div", { "class": "row" }, [
       el("code", { "class": "url grow", text: hookUrl }),
       el("button", { text: "Copy", on: { click: function () {
@@ -221,7 +238,7 @@ function connectionCard(c) {
           .catch(function (err) { logBox.replaceChildren(el("div", { "class": "msg bad", text: err.message })); });
       } } }),
       el("span", { "class": "grow" }),
-      el("button", { text: "Edit", on: { click: function () { openForm(c); } } }),
+      el("button", { text: "Edit messages", on: { click: function () { openForm(c); } } }),
       el("button", { "class": "danger", text: "Delete", on: { click: function () {
         if (!confirm("Delete \"" + c.name + "\"? zInspector webhooks pointing at it will start failing.")) return;
         call("DELETE", "/api/connections/" + c.id).then(load).catch(function (err) { flash(err.message, false); });
@@ -234,13 +251,14 @@ function connectionCard(c) {
 
 function logTable(log) {
   if (!log.length) return el("div", { "class": "hint", text: "Nothing delivered yet." });
-  var label = { test: "Test", created: "New task", updated: "Updated", completed: "Completed" };
+  var label = { test: "Test" };
+  (state.events || []).forEach(function (e) { label[e.key] = e.label; });
   return el("table", {}, [
-    el("thead", {}, [el("tr", {}, ["When", "Alert", "Task", "Result"].map(function (h) { return el("th", { text: h }); }))]),
+    el("thead", {}, [el("tr", {}, ["When", "Event", "Ref", "Result"].map(function (h) { return el("th", { text: h }); }))]),
     el("tbody", {}, log.map(function (e) {
       return el("tr", {}, [
         el("td", { text: new Date(e.at).toLocaleString() }),
-        el("td", { text: label[e.kind] || e.kind }),
+        el("td", { text: e.kind === "other" ? e.type : (label[e.kind] || e.kind) }),
         el("td", { text: e.ref ? "Ref " + e.ref : (e.taskId != null ? "#" + e.taskId : "") }),
         el("td", { style: "color:var(" + (e.ok ? "--ok" : "--bad") + ")",
                    text: e.ok ? "Delivered" : "Failed (" + e.status + ") " + (e.detail || "") })
@@ -256,22 +274,73 @@ function openForm(c) {
   $("f-platform").value = c ? c.platform : "google-chat";
   $("f-chatUrl").value = c ? c.chatUrl : "";
   $("f-token").value = c ? c.token : "";
-  ["created", "updated", "completed"].forEach(function (e) { $("f-" + e).checked = c ? !!(c.events && c.events[e]) : true; });
+  templates = {};
+  state.events.forEach(function (e) { templates[e.key] = c && c.templates && c.templates[e.key] != null ? c.templates[e.key] : e.template; });
+  $("f-event").replaceChildren.apply($("f-event"), state.events.map(function (e) { return el("option", { value: e.key, text: e.label }); }));
   $("formMsg").textContent = "";
   setPlaceholder();
+  showEvent();
   $("dialog").showModal();
+}
+
+var templates = {};
+var previewTimer = null;
+var eventInfo = function () { var k = $("f-event").value; return state.events.filter(function (e) { return e.key === k; })[0]; };
+
+function showEvent() {
+  var e = eventInfo();
+  $("f-eventHint").textContent = e.hint ? "Used when: " + e.hint + "." : "";
+  $("f-template").value = templates[e.key];
+  preview();
+}
+
+function preview() {
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(function () {
+    var key = $("f-event").value;
+    call("POST", "/api/preview", { connectionId: editing ? editing.id : null, kind: key,
+      template: $("f-template").value, platform: $("f-platform").value }).then(function (r) {
+      if ($("f-event").value !== key) return;
+      $("f-preview").innerHTML = formatChat(r.text) || "<span class='hint'>(empty: nothing would be posted)</span>";
+      $("f-source").textContent = r.source === "real" ? "last real event, " + new Date(r.at).toLocaleString() : "example data";
+      $("f-fields").replaceChildren.apply($("f-fields"), r.fields.map(function (f) {
+        return el("button", { type: "button", text: f, on: { click: function () { insertField(f); } } });
+      }));
+    }).catch(function (err) { $("f-preview").textContent = err.message; });
+  }, 250);
+}
+
+function insertField(path) {
+  var t = $("f-template"), at = t.selectionStart, token = "{{" + path + "}}";
+  t.value = t.value.slice(0, at) + token + t.value.slice(t.selectionEnd);
+  t.focus(); t.selectionStart = t.selectionEnd = at + token.length;
+  templates[$("f-event").value] = t.value;
+  preview();
+}
+
+// A rough look at chat formatting: *bold*, _italic_, <url|text>. Escapes everything first.
+function formatChat(text) {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/&lt;(https?:\/\/[^|\s]+?)\|([^&]+?)&gt;/g, "<u>$2</u>")
+    .replace(/\*([^*\n]+)\*/g, "<b>$1</b>")
+    .replace(/(^|\s)_([^_\n]+)_/g, "$1<i>$2</i>");
 }
 
 function setPlaceholder() { $("f-chatUrl").placeholder = PLACEHOLDER[$("f-platform").value]; }
 
 $("add").addEventListener("click", function () { openForm(null); });
 $("cancel").addEventListener("click", function () { $("dialog").close(); });
-$("f-platform").addEventListener("change", setPlaceholder);
+$("f-platform").addEventListener("change", function () { setPlaceholder(); preview(); });
+$("f-event").addEventListener("change", showEvent);
+$("f-template").addEventListener("input", function () { templates[$("f-event").value] = $("f-template").value; preview(); });
+$("f-reset").addEventListener("click", function () {
+  var e = eventInfo(); templates[e.key] = e.template; showEvent();
+});
 $("form").addEventListener("submit", function (ev) {
   ev.preventDefault();
   var body = {
     name: $("f-name").value, platform: $("f-platform").value, chatUrl: $("f-chatUrl").value, token: $("f-token").value,
-    events: { created: $("f-created").checked, updated: $("f-updated").checked, completed: $("f-completed").checked }
+    templates: templates
   };
   var req = editing ? call("PUT", "/api/connections/" + editing.id, body) : call("POST", "/api/connections", body);
   req.then(function () { $("dialog").close(); return load(); })

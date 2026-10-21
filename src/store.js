@@ -1,9 +1,8 @@
 // Connections, settings and delivery logs, kept in the Workers KV namespace bound as RELAY.
 
-import { PLATFORMS, DEFAULT_COMPLETED } from "./messages.js";
+import { PLATFORMS, DEFAULT_COMPLETED, EVENTS, MAX_TEMPLATE } from "./messages.js";
 
 const LOG_SIZE = 20;
-const EVENTS = ["created", "updated", "completed"];
 
 export async function getConnections(kv) {
   return (await kv.get("connections", "json")) || [];
@@ -18,16 +17,18 @@ export async function getSettings(kv) {
   return { taskUrl: "", completedStatuses: DEFAULT_COMPLETED, people: [], ...saved };
 }
 
-export async function getLog(kv, id) {
-  return (await kv.get(`log:${id}`, "json")) || [];
+// Per connection: the last deliveries, and the last event of each kind (for previews and field names).
+export async function getActivity(kv, id) {
+  return { entries: [], samples: {}, ...((await kv.get(`log:${id}`, "json")) || {}) };
 }
 
-export async function addLog(kv, id, entry) {
-  const log = await getLog(kv, id);
-  await kv.put(`log:${id}`, JSON.stringify([entry, ...log].slice(0, LOG_SIZE)));
+export async function addActivity(kv, id, entry, kind, event) {
+  const activity = await getActivity(kv, id);
+  const samples = kind && kind !== "test" ? { ...activity.samples, [kind]: { at: entry.at, event } } : activity.samples;
+  await kv.put(`log:${id}`, JSON.stringify({ entries: [entry, ...activity.entries].slice(0, LOG_SIZE), samples }));
 }
 
-export async function deleteLog(kv, id) {
+export async function deleteActivity(kv, id) {
   await kv.delete(`log:${id}`);
 }
 
@@ -41,7 +42,12 @@ export function cleanConnection(input, existing = {}) {
   if (!chatUrl.startsWith(PLATFORMS[platform].urlPrefix)) {
     return { error: `A ${PLATFORMS[platform].label} webhook URL starts with ${PLATFORMS[platform].urlPrefix}` };
   }
-  const events = Object.fromEntries(EVENTS.map((e) => [e, Boolean(input.events?.[e])]));
+  const templates = {};
+  for (const { key, label, template } of EVENTS) {
+    const text = typeof input.templates?.[key] === "string" ? input.templates[key] : template;
+    if (text.length > MAX_TEMPLATE) return { error: `The "${label}" message is too long.` };
+    templates[key] = text;
+  }
   return {
     value: {
       id: existing.id || newId(),
@@ -50,7 +56,7 @@ export function cleanConnection(input, existing = {}) {
       platform,
       chatUrl,
       token: String(input.token || "").trim(),
-      events,
+      templates,
     },
   };
 }

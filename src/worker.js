@@ -6,14 +6,14 @@
 //
 // Bindings: KV namespace RELAY, secret ADMIN_PASSWORD.
 
-import { buildMessage, alertKind, deliveryUrl } from "./messages.js";
+import { buildMessage, eventKind, deliveryUrl, render, fieldPaths, EVENTS, EXAMPLES, TEST_MESSAGE } from "./messages.js";
 import {
   getConnections,
   saveConnections,
   getSettings,
-  getLog,
-  addLog,
-  deleteLog,
+  getActivity,
+  addActivity,
+  deleteActivity,
   cleanConnection,
   cleanSettings,
 } from "./store.js";
@@ -65,13 +65,13 @@ async function relay(request, env, id) {
     return text("Body is not JSON", 400);
   }
 
-  const settings = await getSettings(env.RELAY);
-  const kind = alertKind(event, settings);
-  if (!kind) return text(`Ignored event "${event.type}"`, 200);
-  if (kind !== "test" && !connection.events?.[kind]) return text(`"${kind}" alerts are off for this chat`, 200);
+  if (!event || typeof event.type !== "string") return text("Not a zInspector event", 400);
 
-  const result = await postToChat(connection, event, buildMessage(event, settings, connection.platform));
-  await addLog(env.RELAY, connection.id, logEntry(kind, event, result));
+  // zInspector decides which events this webhook sends; every one that arrives is posted.
+  const settings = await getSettings(env.RELAY);
+  const kind = eventKind(event, settings);
+  const result = await postToChat(connection, event, buildMessage(event, connection, settings));
+  await addActivity(env.RELAY, connection.id, logEntry(kind, event, result), kind, event);
   // Pass the chat's answer back so zInspector's Delivery History shows it.
   return text(result.body, result.ok ? 200 : 502);
 }
@@ -89,6 +89,7 @@ function logEntry(kind, event, result) {
   return {
     at: new Date().toISOString(),
     kind,
+    type: event.type,
     taskId: event.data?.id ?? null,
     ref: event.data?.referenceNumber || null,
     ok: result.ok,
@@ -107,6 +108,23 @@ async function api(request, env, url) {
       connections: await getConnections(kv),
       settings: await getSettings(kv),
       hookBase: `${url.origin}/hook/`,
+      events: EVENTS,
+    });
+  }
+
+  // Render a template against the connection's last real event of that kind, or example data.
+  if (parts[1] === "preview" && method === "POST") {
+    const input = await request.json();
+    const kind = EVENTS.some((e) => e.key === input.kind) ? input.kind : "other";
+    const activity = input.connectionId ? await getActivity(kv, String(input.connectionId)) : { samples: {} };
+    const sample = activity.samples[kind];
+    const event = sample?.event || EXAMPLES[kind];
+    const platform = input.platform === "slack" ? "slack" : "google-chat";
+    return json({
+      text: render(String(input.template || ""), event, await getSettings(kv), platform),
+      fields: fieldPaths(event),
+      source: sample ? "real" : "example",
+      at: sample?.at || null,
     });
   }
 
@@ -139,15 +157,15 @@ async function api(request, env, url) {
   }
   if (!parts[3] && method === "DELETE") {
     await saveConnections(kv, connections.filter((c) => c.id !== id));
-    await deleteLog(kv, id);
+    await deleteActivity(kv, id);
     return json({ ok: true });
   }
-  if (parts[3] === "log" && method === "GET") return json(await getLog(kv, id));
+  if (parts[3] === "log" && method === "GET") return json((await getActivity(kv, id)).entries);
   if (parts[3] === "test" && method === "POST") {
     const event = { type: "webhook.test" };
-    const result = await postToChat(existing, event, buildMessage(event, {}, existing.platform));
+    const result = await postToChat(existing, event, TEST_MESSAGE);
     const entry = logEntry("test", event, result);
-    await addLog(kv, id, entry);
+    await addActivity(kv, id, entry, "test", event);
     return json({ ok: entry.ok, status: entry.status, detail: entry.detail });
   }
   return json({ error: "Not found" }, 404);
