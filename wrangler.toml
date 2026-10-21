@@ -1,0 +1,7 @@
+name = "zinspector-chat-relay"
+main = "src/worker.js"
+compatibility_date = "2026-09-01"
+
+# Connections, settings and delivery logs. Without an id, Wrangler creates the namespace on first deploy.
+[[kv_namespaces]]
+binding = "RELAY"
