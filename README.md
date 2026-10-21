@@ -49,14 +49,39 @@ Workers KV for storage. No other server.
 1. **Deploy from GitHub.** Cloudflare dashboard → **Workers & Pages** → **Create** → **Import a repository** →
    pick `tania-collab/chat` and keep the defaults. Cloudflare builds it and creates the storage
    (`RELAY`) on the first deploy. Every later push to `main` redeploys.
-2. **Set the admin password.** Worker → **Settings** → **Variables and Secrets** → **Add** → type **Secret**,
-   name `ADMIN_PASSWORD`, a long password of your choice → **Deploy**.
-3. **Open the app** at `https://zinspector-chat-relay.<your-subdomain>.workers.dev`. The browser asks for a
-   user name and password: type anything as the user name and your `ADMIN_PASSWORD` as the password.
+2. **Turn on sign-in** (next section). Until then the app shows "Setup is not finished".
 
 If the first build fails on the KV namespace, create one by hand (**Storage & Databases** → **KV** →
 **Create**, name `zinspector-chat-relay`), put its id in `wrangler.toml` under `[[kv_namespaces]]`
 (`id = "..."`), and push.
+
+## Sign-in for your team (Cloudflare Access, free up to 50 people)
+
+People open the app, type their work email, and get a 6-digit code by email. No passwords to share.
+The page shows who is signed in, and each chat shows who added it.
+
+1. **Turn on Access.** Worker → **Settings** → **Domains & Routes** → on the `workers.dev` row, click
+   **Enable Cloudflare Access**. (The first time, Cloudflare asks you to pick a team name for Zero Trust;
+   the free plan is fine.) Cloudflare shows two values: copy the **team domain**
+   (like `yourteam.cloudflareaccess.com`) and the **Application Audience (AUD) tag**.
+2. **Choose who can sign in.** Click **Manage Cloudflare Access** (or Zero Trust → **Access** →
+   **Applications** → the worker's application) → **Policies** → edit the policy: **Include** →
+   **Emails ending in** → `@zinspector.com` (or list people one by one under **Emails**). Save.
+3. **Let zInspector through.** zInspector can't sign in, so its webhook addresses must skip Access (each
+   connection's token still protects them). Zero Trust → **Access** → **Applications** → **Add an
+   application** → **Self-hosted**. Domain: the worker's `workers.dev` address, **Path**: `hook`.
+   Policy: action **Bypass**, **Include** → **Everyone**. Save.
+4. **Tell the app.** Worker → **Settings** → **Variables and Secrets** → add `ACCESS_TEAM_DOMAIN` (the team
+   domain) and `ACCESS_AUD` (the AUD tag), type **Text** → **Deploy**.
+
+Open the app: you get Cloudflare's sign-in page, then the app with "Signed in as …" at the top.
+To remove someone, take them off the policy in step 2.
+
+The app checks Cloudflare's sign-in itself, so if Access is ever switched off the page refuses everyone
+rather than opening up.
+
+**Just testing on your own?** Instead of Access, add a secret `ADMIN_PASSWORD`; the browser then asks for it
+(any user name). Once `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` are set, the password no longer works.
 
 ## Connect a chat
 
