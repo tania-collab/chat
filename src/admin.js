@@ -80,7 +80,8 @@ export const ADMIN_HTML = String.raw`<!doctype html>
   <p class="lead" style="margin-top:-6px">Messages work without these. Fill them in to add task links and real @mentions.</p>
   <form class="card" id="settings">
     <label for="taskUrl">Task link <span class="hint">adds an "Open in zInspector" link to task messages.
-      Open any task in zInspector, copy the address from the browser bar, and replace the task number with {id}.</span></label>
+      Open any task in zInspector, copy the address from the browser bar, and replace the task number with {id}:
+      each message then links to its own task.</span></label>
     <input type="url" id="taskUrl" placeholder="Leave empty for no link">
     <label for="completedStatuses">"Done" statuses <span class="hint">comma-separated status names that post the celebration</span></label>
     <input type="text" id="completedStatuses">
