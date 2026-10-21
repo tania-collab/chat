@@ -60,11 +60,9 @@ export const ADMIN_HTML = String.raw`<!doctype html>
   .preview { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg); border: 1px solid var(--line);
              border-radius: 8px; padding: 8px 10px; min-height: 200px; font-size: 14px; }
   .chatcard { border: 1px solid var(--line); border-radius: 12px; background: var(--card); overflow: hidden; }
-  .cc-head { padding: 10px 12px; border-bottom: 1px solid var(--line); }
-  .cc-title { font-size: 15px; }
-  .cc-body { padding: 10px 12px; display: grid; gap: 6px; justify-items: start; }
-  .cc-quote { font-style: italic; }
-  .cc-button { border: 1px solid var(--line); border-radius: 999px; padding: 4px 14px; color: var(--accent); font-weight: 500; margin-top: 4px; }
+  .cc-row { display: flex; gap: 12px; align-items: center; padding: 10px 12px; }
+  .cc-quote { font-style: italic; padding: 0 12px 10px; }
+  .cc-button { border: 1px solid var(--line); border-radius: 999px; padding: 4px 14px; color: var(--accent); font-weight: 500; }
   .fields { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
   .fields button { font: 12px ui-monospace, Menlo, monospace; padding: 2px 8px; border-radius: 999px; background: var(--chip); }
   dialog::backdrop { background: rgba(0,0,0,.4); }
@@ -390,17 +388,22 @@ function insertField(path) {
   preview();
 }
 
-// A look at the Google Chat card: heading, context line, the task, its description, the button.
-function cardPreview(header, card) {
-  return el("div", { "class": "chatcard" }, [
-    el("div", { "class": "cc-head" }, [
-      el("div", { "class": "cc-title", text: header }),
-      card.subtitle ? el("div", { "class": "hint", text: card.subtitle }) : null
-    ]),
-    el("div", { "class": "cc-body" }, [
-      el("b", { text: card.title }),
-      card.description ? el("div", { "class": "cc-quote", text: "“" + card.description + "”" }) : null,
-      card.link ? el("span", { "class": "cc-button", text: "Open the task" }) : null
+// A look at the message: the sentence, then the compact card (area, title with Open, details, quote).
+function cardPreview(text, card) {
+  var sentence = el("div", { style: "margin-bottom:8px" });
+  sentence.innerHTML = formatChat(text);
+  return el("div", {}, [
+    sentence,
+    el("div", { "class": "chatcard" }, [
+      el("div", { "class": "cc-row" }, [
+        el("div", { "class": "grow" }, [
+          card.topLabel ? el("div", { "class": "hint", text: card.topLabel }) : null,
+          el("b", { text: card.title }),
+          card.bottomLabel ? el("div", { "class": "hint", text: card.bottomLabel }) : null
+        ]),
+        card.link ? el("span", { "class": "cc-button", text: "Open" }) : null
+      ]),
+      card.description ? el("div", { "class": "cc-quote", text: "“" + card.description + "”" }) : null
     ])
   ]);
 }

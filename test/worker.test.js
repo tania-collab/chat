@@ -54,7 +54,7 @@ test("relays a new task to the connection's chat and logs it", async () => {
     assert.equal(res.status, 200);
     assert.equal(calls.length, 1);
     assert.ok(calls[0].url.startsWith("https://chat.googleapis.com/v1/spaces/AAA/messages"));
-    assert.equal(calls[0].body.cardsV2[0].card.header.title, "Tania has a new task");
+    assert.equal(calls[0].body.text, "*Tania Aquirre* has a new task");
   });
   const log = await (await admin(env, "GET", `/api/connections/${c.id}/log`)).json();
   assert.deepEqual([log[0].kind, log[0].ref, log[0].ok], ["task.created", "313307", true]);
@@ -72,7 +72,7 @@ test("posts each update with only what changed, and skips updates that changed n
     await hook(env, c.id, { type: "zdata.changed", data: { area: "Account", detail: "Notes", actionType: "Updated" } }, "secret-1");
     assert.equal(calls.length, 4);
     assert.match(calls[1].body.text, /• Status: New → \*In Progress\*$/);
-    assert.equal(calls[2].body.cardsV2[0].card.header.title, "Tania finished a task ✅");
+    assert.equal(calls[2].body.text, "🎉 Tania finished a task!");
     assert.match(calls[3].body.text, /^🗂️ \*Account › Notes\* Updated/);
   });
   const log = await (await admin(env, "GET", `/api/connections/${c.id}/log`)).json();
@@ -87,7 +87,7 @@ test("celebrates a completion once, not on every later edit of a done task", asy
     await hook(env, c.id, withStatus("Work Complete"), "secret-1");
     await hook(env, c.id, { ...withStatus("Work Complete"), data: { ...withStatus("Work Complete").data, priority: 5 } }, "secret-1");
     await hook(env, c.id, withStatus("Closed"), "secret-1");
-    assert.equal(calls.filter((call) => call.body.cardsV2?.[0].card.header.title?.endsWith("✅")).length, 1);
+    assert.equal(calls.filter((call) => call.body.text.startsWith("🎉")).length, 1);
     assert.match(calls[2].body.text, /Priority: Normal → \*Highest\*/);
     assert.match(calls[3].body.text, /Status: Work Complete → \*Closed\*/);
   });
@@ -110,7 +110,7 @@ test("edited copy is saved and used for the next event", async () => {
   const c = await addConnection(env, { ...marketing, templates: { "task.created": "Hi {{data.assignedTo}}" } });
   await withChat(200, async (calls) => {
     await hook(env, c.id, created, "secret-1");
-    assert.equal(calls[0].body.cardsV2[0].card.header.title, "Hi Tania Aquirre");
+    assert.equal(calls[0].body.text, "Hi Tania Aquirre");
   });
 });
 
@@ -171,7 +171,7 @@ test("people saved in settings are @mentioned on a new task, not on every update
   await withChat(200, async (calls) => {
     await hook(env, c.id, created, "secret-1");
     await hook(env, c.id, withStatus("In Progress"), "secret-1");
-    assert.equal(calls[0].body.text, "<users/555>");
+    assert.equal(calls[0].body.text, "<users/555> has a new task");
     assert.doesNotMatch(calls[1].body.text, /users\/555/);
   });
 });
@@ -190,7 +190,7 @@ test("links each message to its own task page without any setup", async () => {
   const c = await addConnection(env);
   await withChat(200, async (calls) => {
     await hook(env, c.id, created, "secret-1");
-    const button = calls[0].body.cardsV2[0].card.sections.at(-1).widgets.at(-1).buttonList.buttons[0];
+    const { button } = calls[0].body.cardsV2[0].card.sections[0].widgets[0].decoratedText;
     assert.equal(button.onClick.openLink.url, "https://dashboard.zinspector.com/task/view/2160012");
   });
 });
@@ -202,7 +202,7 @@ test("Work Complete and Closed celebrate; Canceled and Deferred don't", async ()
     await withChat(200, async (calls) => {
       await hook(env, c.id, created, "secret-1");
       await hook(env, c.id, withStatus(status), "secret-1");
-      assert.equal(Boolean(calls[1].body.cardsV2?.[0].card.header.title.endsWith("✅")), celebrates, status);
+      assert.equal(calls[1].body.text.startsWith("🎉"), celebrates, status);
     });
   }
 });
@@ -245,11 +245,11 @@ test("messages saved with the old default copy move to the new one; edited ones 
   await withChat(200, async (calls) => {
     await hook(env, c.id, created, "secret-1");
     await hook(env, c.id, withStatus("In Progress"), "secret-1");
-    assert.equal(calls[0].body.cardsV2[0].card.header.title, "Tania has a new task");
+    assert.equal(calls[0].body.text, "*Tania Aquirre* has a new task");
     assert.equal(calls[1].body.text, "Mine: In Progress");
   });
   const state = await (await admin(env, "GET", "/api/state")).json();
-  assert.equal(state.connections[0].templates["task.created"], "{{assigneeFirstName}} has a new task");
+  assert.equal(state.connections[0].templates["task.created"], "{{assignee}} has a new task · from {{managerName}}");
 });
 
 test("settings saved with the old defaults move to zInspector's statuses and task link", async () => {
@@ -281,8 +281,8 @@ test("by default a chat gets new, newly assigned and finished tasks, not other c
     await hook(env, c.id, unassigned, "secret-1"); // new but nobody assigned: not posted
     await hook(env, c.id, { ...unassigned, type: "task.updated", data: { ...unassigned.data, assignedTo: { name: "Tim Wallace" } } }, "secret-1"); // newly assigned: posted
     assert.deepEqual(
-      calls.map((call) => call.body.cardsV2[0].card.header.title),
-      ["Tania has a new task", "Tania finished a task ✅", "Tim was assigned a task"],
+      calls.map((call) => call.body.text),
+      ["*Tania Aquirre* has a new task", "🎉 Tania finished a task!", "*Tim Wallace* was assigned a task"],
     );
   });
   const log = await (await admin(env, "GET", `/api/connections/${c.id}/log`)).json();
