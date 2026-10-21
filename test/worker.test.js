@@ -180,3 +180,11 @@ test("settings saved with the old defaults move to zInspector's statuses and tas
   assert.equal(settings.completedStatuses, "Work Complete,Closed");
   assert.equal(settings.taskUrl, "https://dashboard.zinspector.com/task/view/{id}");
 });
+
+test("a pasted list can't create the same person twice", async () => {
+  const env = makeEnv();
+  const res = await admin(env, "PUT", "/api/settings", {
+    people: [{ email: "Maria@zinspector.com", googleChatId: "111111" }, { email: "maria@zinspector.com", googleChatId: "222222" }],
+  });
+  assert.deepEqual((await res.json()).people, [{ email: "maria@zinspector.com", googleChatId: "222222", slackId: "" }]);
+});
