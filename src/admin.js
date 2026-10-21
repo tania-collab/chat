@@ -76,13 +76,16 @@ export const ADMIN_HTML = String.raw`<!doctype html>
   </div>
   <div id="connections" style="margin-top:12px"><div class="card empty">Loading…</div></div>
 
-  <h2>Settings</h2>
+  <h2>Optional settings</h2>
+  <p class="lead" style="margin-top:-6px">Messages work without these. Fill them in to add task links and real @mentions.</p>
   <form class="card" id="settings">
-    <label for="taskUrl">Task link <span class="hint">optional, adds "Open in zInspector". {id} becomes the task id.</span></label>
-    <input type="url" id="taskUrl" placeholder="https://.../task/{id}">
+    <label for="taskUrl">Task link <span class="hint">adds an "Open in zInspector" link to task messages.
+      Open any task in zInspector, copy the address from the browser bar, and replace the task number with {id}.</span></label>
+    <input type="url" id="taskUrl" placeholder="Leave empty for no link">
     <label for="completedStatuses">"Done" statuses <span class="hint">comma-separated status names that post the celebration</span></label>
     <input type="text" id="completedStatuses">
-    <label>People <span class="hint">for real @mentions; without an id the name shows in bold</span></label>
+    <label>People <span class="hint">for @mentions that notify the assignee; without an id their name shows in bold.
+      Google Chat user id: in admin.google.com → Directory → Users, click the person; it's the long number at the end of the address.</span></label>
     <div class="scroll"><table>
       <thead><tr><th>zInspector email</th><th>Google Chat user id</th><th>Slack member id</th><th></th></tr></thead>
       <tbody id="people"></tbody>
@@ -361,9 +364,9 @@ function addPersonRow(p) {
   p = p || {};
   var input = function (cls, value, ph) { return el("input", { type: "text", "class": cls, value: value || "", placeholder: ph }); };
   var row = el("tr", {}, [
-    el("td", {}, [input("p-email", p.email, "name@company.com")]),
-    el("td", {}, [input("p-gchat", p.googleChatId, "123456789012345678901")]),
-    el("td", {}, [input("p-slack", p.slackId, "U01ABCDEF")]),
+    el("td", {}, [input("p-email", p.email, "their zInspector email")]),
+    el("td", {}, [input("p-gchat", p.googleChatId, "long number, if Google Chat")]),
+    el("td", {}, [input("p-slack", p.slackId, "member id, if Slack")]),
     el("td", {}, [el("button", { type: "button", "class": "danger", text: "Remove", on: { click: function () { row.remove(); } } })])
   ]);
   $("people").appendChild(row);
