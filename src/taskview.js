@@ -4,6 +4,7 @@
 const PRIORITY = { 1: "Lowest", 2: "Low", 3: "Normal", 4: "High", 5: "Highest" };
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const SHORT_TEXT = 280;
+const TITLE_MAX = 90;
 
 // The fields worth comparing between two events of the same task.
 export function snapshotOf(data = {}) {
@@ -40,7 +41,7 @@ export function changesBetween(before, now, mentionOf) {
   if (before.type !== now.type && now.type) lines.push(`• Type: ${before.type || "none"} → *${now.type}*`);
   if (before.next !== now.next && now.next) lines.push(`• Next to-do: *${now.next}*`);
   if (before.description !== now.description && now.description) {
-    lines.push(`• Description: _${shorten(now.description, 140)}_`);
+    lines.push(`• Title: _${shorten(now.description, 140)}_`);
   }
   return lines;
 }
@@ -54,10 +55,16 @@ export function taskExtras({ event, previous, kind, link, mentionOf }) {
   const newlyAssigned = previous && personKey(previous.assignee) !== personKey(now.assignee);
   const mentionAssignee = kind !== "task.updated" || newlyAssigned;
   const assignee = now.assignee ? (mentionAssignee ? mentionOf(now.assignee) : `*${now.assignee.name}*`) : "";
-  const title = now.type || "Task";
+  // zInspector shows a task's description as its title; the type ("Marketing Required") is its category.
+  const typeLabel = now.type.replace(/ Required$/, "");
+  const title = shorten(now.description.split("\n")[0], TITLE_MAX) || typeLabel || "Task";
+  const linkText = title.replace(/[<>|]/g, " ").replace(/\s+/g, " ").trim(); // these would break <url|text>
 
   return {
-    taskTitle: link ? `<${link}|${title}>` : `*${title}*`,
+    taskTitle: link ? `<${link}|${linkText}>` : `*${title}*`,
+    taskType: typeLabel,
+    // The rest of the description, when the title above had to cut it short.
+    descriptionMore: shorten(now.description, SHORT_TEXT) === title ? "" : shorten(now.description, SHORT_TEXT),
     taskLink: link || "",
     assignee,
     assigneeOrUnassigned: assignee || "_Unassigned_",
@@ -72,7 +79,7 @@ export function taskExtras({ event, previous, kind, link, mentionOf }) {
 }
 
 export const EXTRA_NAMES = [
-  "taskTitle", "assignee", "assigneeOrUnassigned", "changes", "dueDate", "priorityFlag",
+  "taskTitle", "taskType", "descriptionMore", "assignee", "assigneeOrUnassigned", "changes", "dueDate", "priorityFlag",
   "shortDescription", "messageText", "messageAuthor", "previousStatus", "taskLink", "mention",
 ];
 

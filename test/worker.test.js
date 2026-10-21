@@ -190,7 +190,7 @@ test("links each message to its own task page without any setup", async () => {
   const c = await addConnection(env);
   await withChat(200, async (calls) => {
     await hook(env, c.id, created, "secret-1");
-    assert.match(calls[0].body.text, /<https:\/\/dashboard\.zinspector\.com\/task\/view\/2160012\|Marketing Required>/);
+    assert.match(calls[0].body.text, /<https:\/\/dashboard\.zinspector\.com\/task\/view\/2160012\|test task>/);
   });
 });
 
