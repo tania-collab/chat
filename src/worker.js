@@ -7,8 +7,9 @@
 // Sign-in: Cloudflare Access (ACCESS_TEAM_DOMAIN + ACCESS_AUD) when set, else the ADMIN_PASSWORD secret.
 // Bindings: KV namespace RELAY.
 
-import { buildMessage, buildPayload, cardFor, skipReason, SKIP_REASONS, AUDIENCES, ALERTS, alertsOf, eventKind, deliveryUrl, render, fieldPaths, templateFor, EVENTS, EXAMPLES, EXAMPLE_PREVIOUS, TEST_MESSAGE } from "./messages.js";
+import { DEFAULT_COMPLETED, buildMessage, buildPayload, cardFor, skipReason, SKIP_REASONS, AUDIENCES, ALERTS, alertsOf, eventKind, deliveryUrl, render, fieldPaths, templateFor, EVENTS, EXAMPLES, EXAMPLE_PREVIOUS, TEST_MESSAGE } from "./messages.js";
 import { snapshotOf, EXTRA_NAMES } from "./taskview.js";
+import { buildDigest, isDigestTime } from "./digest.js";
 import {
   getConnections,
   saveConnections,
@@ -22,7 +23,23 @@ import {
 import { ADMIN_HTML } from "./admin.js";
 import { accessConfigured, accessCheck } from "./access.js";
 
+// When the app saw the task created and finished, for the weekly digest's "last week" numbers.
+function withDates(snapshot, previous, event, kind, settings) {
+  const now = new Date().toISOString();
+  const done = (settings.completedStatuses || DEFAULT_COMPLETED).split(",").map((x) => x.trim().toLowerCase());
+  const stillDone = done.includes(String(snapshot.status).toLowerCase());
+  const createdAt = previous?.createdAt || (event.type === "task.created" ? now : null);
+  const finishedAt = kind === "task.completed" ? now : stillDone ? previous?.finishedAt || null : null;
+  return { ...snapshot, createdAt, finishedAt };
+}
+
 export default {
+  // Cron (wrangler.toml) fires Mondays at 15:30 and 16:30 UTC; whichever is 8:30am Pacific sends the digests.
+  async scheduled(controller, env, ctx) {
+    if (!env.RELAY || !isDigestTime(new Date(controller.scheduledTime))) return;
+    ctx.waitUntil(sendDigests(env));
+  },
+
   async fetch(request, env) {
     const url = new URL(request.url);
     try {
@@ -84,10 +101,32 @@ async function relay(request, env, id) {
     : await postToChat(connection, event, buildPayload(event, connection, settings, previous));
   // Remember the task's state (also when not posted) so the next update can say what changed.
   const keepsState = taskId != null && event.type !== "task.message.created" && result.ok;
-  const snapshot = keepsState ? snapshotOf(event.data) : null;
+  const snapshot = keepsState ? withDates(snapshotOf(event.data), previous, event, kind, settings) : null;
   await saveActivity(env.RELAY, connection.id, activity, { entry: logEntry(kind, event, result), kind, event, previous, snapshot });
   // Pass the chat's answer back so zInspector's Delivery History shows it.
   return text(result.body, result.ok ? 200 : 502);
+}
+
+async function sendDigests(env) {
+  for (const connection of await getConnections(env.RELAY)) {
+    if (alertsOf(connection).digest) await sendDigest(env, connection);
+  }
+}
+
+// Posts one chat's digest; returns {ok, status, detail}, or null when there was nothing to report.
+async function sendDigest(env, connection) {
+  const activity = await getActivity(env.RELAY, connection.id);
+  const payload = buildDigest(connection, activity, await getSettings(env.RELAY));
+  if (!payload) return null;
+  const event = { type: "digest" };
+  const res = await fetch(connection.chatUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=UTF-8" },
+    body: JSON.stringify(payload),
+  });
+  const entry = logEntry("digest", event, { ok: res.ok, status: res.status, body: await res.text() });
+  await saveActivity(env.RELAY, connection.id, await getActivity(env.RELAY, connection.id), { entry, kind: "test", event });
+  return { ok: entry.ok, status: entry.status, detail: entry.detail };
 }
 
 // `payload` is {text} or {text, cardsV2}.
@@ -188,6 +227,10 @@ async function api(request, env, url, user) {
     return json({ ok: true });
   }
   if (parts[3] === "log" && method === "GET") return json((await getActivity(kv, id)).entries);
+  if (parts[3] === "digest" && method === "POST") {
+    const result = await sendDigest(env, existing);
+    return json(result || { ok: true, empty: true });
+  }
   if (parts[3] === "test" && method === "POST") {
     const event = { type: "webhook.test" };
     const result = await postToChat(existing, event, { text: TEST_MESSAGE });

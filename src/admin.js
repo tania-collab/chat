@@ -283,6 +283,13 @@ function connectionCard(c) {
           flash(r.ok ? "Test message sent. Check the chat." : "The chat refused it (" + r.status + "): " + r.detail, r.ok);
         }).catch(function (err) { flash(err.message, false); }).then(function () { b.disabled = false; });
       } } }),
+      el("button", { text: "Send digest now", on: { click: function (ev) {
+        var b = ev.target; b.disabled = true; flash("Sending…", true);
+        call("POST", "/api/connections/" + c.id + "/digest").then(function (r) {
+          if (r.empty) flash("Nothing to report yet: no open tasks and a quiet week.", true);
+          else flash(r.ok ? "Digest sent. Check the chat." : "The chat refused it (" + r.status + "): " + r.detail, r.ok);
+        }).catch(function (err) { flash(err.message, false); }).then(function () { b.disabled = false; });
+      } } }),
       el("button", { text: "Recent deliveries", on: { click: function () {
         if (logBox.style.display !== "none") { logBox.style.display = "none"; return; }
         logBox.style.display = "block";
@@ -304,7 +311,7 @@ function connectionCard(c) {
 
 function logTable(log) {
   if (!log.length) return el("div", { "class": "hint", text: "Nothing delivered yet." });
-  var label = { test: "Test" };
+  var label = { test: "Test", digest: "Weekly digest" };
   (state.events || []).forEach(function (e) { label[e.key] = e.label; });
   return el("table", {}, [
     el("thead", {}, [el("tr", {}, ["When", "Event", "Ref", "Result"].map(function (h) { return el("th", { text: h }); }))]),
