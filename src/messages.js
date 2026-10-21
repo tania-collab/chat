@@ -120,7 +120,8 @@ export function eventKind(event, settings = {}, previous = null) {
       .filter(Boolean);
     const isDone = (status) => Boolean(status) && done.includes(String(status).toLowerCase());
     const nowDone = isDone(valueText(event.data?.status));
-    return nowDone && !isDone(previous?.status) ? "task.completed" : "task.updated";
+    // Only a task the chat already knew as not done counts as completed (bulk clean-ups of old tasks don't).
+    return previous && nowDone && !isDone(previous.status) ? "task.completed" : "task.updated";
   }
   return EVENT_KEYS.includes(event.type) && event.type !== "other" ? event.type : "other";
 }
@@ -130,11 +131,47 @@ export function defaultTemplates() {
   return Object.fromEntries(EVENTS.map((e) => [e.key, e.template]));
 }
 
-// The message for an event, or null when there's nothing worth posting (an update that changed nothing).
+// Which tasks a chat hears about.
+export const AUDIENCES = {
+  "assigned-or-next": "Tasks with someone assigned or a next to-do",
+  assigned: "Tasks with someone assigned",
+  all: "All tasks",
+};
+export const DEFAULT_AUDIENCE = "assigned-or-next";
+
+// Why an event isn't posted, or null when it is. Readable text for each reason is in SKIP_REASONS.
+export const SKIP_REASONS = {
+  "not-for-this-chat": "nobody on the task matches this chat's rule (assigned / next to-do)",
+  "first-seen": "first time this task was seen, so there's nothing to compare",
+  "no-change": "nothing visible changed",
+};
+
+export function skipReason(event, connection, settings = {}, previous = null) {
+  const kind = eventKind(event, settings, previous);
+  if (kind === "test" || !String(event.type).startsWith("task.")) return null;
+  const audience = AUDIENCES[connection.only] ? connection.only : DEFAULT_AUDIENCE;
+  const hasPeopleFields = ["assignedTo", "assignedToContact", "nextToDo"].some((k) => k in (event.data || {}));
+  // A message event may not carry the task's people; then use the task's last known state.
+  const now = event.type === "task.message.created" && !hasPeopleFields ? previous : snapshotOf(event.data);
+  // Someone being taken off a task the chat followed is news too.
+  const wasFollowed = kind === "task.updated" && matchesAudience(previous, audience);
+  if (!matchesAudience(now, audience) && !wasFollowed) return "not-for-this-chat";
+  if (kind === "task.updated" && !previous) return "first-seen";
+  if (kind === "task.updated" && nothingChanged(previous, event.data)) return "no-change";
+  return null;
+}
+
+function matchesAudience(snapshot, audience) {
+  if (audience === "all") return true;
+  if (!snapshot) return false;
+  return Boolean(snapshot.assignee || (audience === "assigned-or-next" && snapshot.next));
+}
+
+// The message for an event, or null when it isn't posted (see skipReason).
 export function buildMessage(event, connection, settings = {}, previous = null) {
   const kind = eventKind(event, settings, previous);
   if (kind === "test") return TEST_MESSAGE;
-  if (kind === "task.updated" && nothingChanged(previous, event.data)) return null;
+  if (skipReason(event, connection, settings, previous)) return null;
   return render(templateFor(connection, kind), event, settings, connection.platform, previous, kind);
 }
 

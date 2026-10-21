@@ -64,7 +64,7 @@ test("posts each update with only what changed, and skips updates that changed n
   await withChat(200, async (calls) => {
     await hook(env, c.id, created, "secret-1");
     const unchanged = await hook(env, c.id, { ...created, type: "task.updated" }, "secret-1");
-    assert.equal(await unchanged.text(), "No visible change, so nothing was posted.");
+    assert.equal(await unchanged.text(), "Not posted: nothing visible changed.");
     await hook(env, c.id, withStatus("In Progress"), "secret-1");
     await hook(env, c.id, withStatus("Work Complete"), "secret-1");
     await hook(env, c.id, { type: "zdata.changed", data: { area: "Account", detail: "Notes", actionType: "Updated" } }, "secret-1");
@@ -81,12 +81,25 @@ test("celebrates a completion once, not on every later edit of a done task", asy
   const env = makeEnv();
   const c = await addConnection(env);
   await withChat(200, async (calls) => {
+    await hook(env, c.id, created, "secret-1");
     await hook(env, c.id, withStatus("Work Complete"), "secret-1");
     await hook(env, c.id, { ...withStatus("Work Complete"), data: { ...withStatus("Work Complete").data, priority: 5 } }, "secret-1");
     await hook(env, c.id, withStatus("Closed"), "secret-1");
     assert.equal(calls.filter((call) => call.body.text.startsWith("✅")).length, 1);
-    assert.match(calls[1].body.text, /Priority: Normal → \*Highest\*/);
-    assert.match(calls[2].body.text, /Status: Work Complete → \*Closed\*/);
+    assert.match(calls[2].body.text, /Priority: Normal → \*Highest\*/);
+    assert.match(calls[3].body.text, /Status: Work Complete → \*Closed\*/);
+  });
+});
+
+test("a bulk clean-up of tasks the chat never saw posts nothing", async () => {
+  const env = makeEnv();
+  const c = await addConnection(env);
+  await withChat(200, async (calls) => {
+    for (let id = 1; id <= 30; id++) {
+      const res = await hook(env, c.id, { ...withStatus("Work Complete"), data: { ...withStatus("Work Complete").data, id } }, "secret-1");
+      assert.equal(await res.text(), "Not posted: first time this task was seen, so there's nothing to compare.");
+    }
+    assert.equal(calls.length, 0);
   });
 });
 
@@ -184,10 +197,39 @@ test("Work Complete and Closed celebrate; Canceled and Deferred don't", async ()
     const env = makeEnv();
     const c = await addConnection(env);
     await withChat(200, async (calls) => {
+      await hook(env, c.id, created, "secret-1");
       await hook(env, c.id, withStatus(status), "secret-1");
-      assert.equal(calls[0].body.text.startsWith("✅"), celebrates, status);
+      assert.equal(calls[1].body.text.startsWith("✅"), celebrates, status);
     });
   }
+});
+
+test("posts only tasks with someone assigned or a next to-do, as the chat's rule says", async () => {
+  const unassigned = { ...created, data: { ...created.data, id: 11, assignedTo: null, nextToDo: null } };
+  const nextOnly = { ...created, data: { ...created.data, id: 12, assignedTo: null, nextToDo: { id: 1, name: "Laura E." } } };
+  const posted = async (only) => {
+    const env = makeEnv();
+    const c = await addConnection(env, { ...marketing, only });
+    return withChat(200, async (calls) => {
+      for (const e of [created, unassigned, nextOnly]) await hook(env, c.id, e, "secret-1");
+      return calls.length;
+    });
+  };
+  assert.equal(await posted(undefined), 2); // default: assigned or next to-do
+  assert.equal(await posted("assigned"), 1);
+  assert.equal(await posted("all"), 3);
+});
+
+test("tells the chat when someone is taken off a task it followed", async () => {
+  const env = makeEnv();
+  const c = await addConnection(env, { ...marketing, only: "assigned" });
+  await withChat(200, async (calls) => {
+    await hook(env, c.id, created, "secret-1");
+    await hook(env, c.id, { ...created, type: "task.updated", data: { ...created.data, assignedTo: null } }, "secret-1");
+    await hook(env, c.id, { ...created, type: "task.updated", data: { ...created.data, assignedTo: null, priority: 5 } }, "secret-1");
+    assert.equal(calls.length, 2);
+    assert.match(calls[1].body.text, /Unassigned \(was Tania Aquirre\)/);
+  });
 });
 
 test("messages saved with the old default copy move to the new one; edited ones stay", async () => {

@@ -126,6 +126,8 @@ export const ADMIN_HTML = String.raw`<!doctype html>
     <input type="url" id="f-chatUrl" required>
     <label for="f-token">zInspector webhook token <span class="hint">the token set on the zInspector webhook; alerts without it are refused</span></label>
     <input type="password" id="f-token" autocomplete="off">
+    <label for="f-only">Post task alerts for <span class="hint">tasks that don't match are remembered but not posted</span></label>
+    <select id="f-only"></select>
     <h2 style="margin:24px 0 4px">Messages</h2>
     <div class="hint">{{field}} puts in a value from the event. A line, or a part of a line between " · ", is left out when one of its fields is empty.
       Ready-made: {{taskTitle}} (the task, linked), {{assignee}} (@mentioned on new tasks, new assignments and completions),
@@ -304,7 +306,7 @@ function logTable(log) {
         el("td", { text: e.kind === "other" ? e.type : (label[e.kind] || e.kind) }),
         el("td", { text: e.ref ? "Ref " + e.ref : (e.taskId != null ? "#" + e.taskId : "") }),
         e.skipped
-          ? el("td", { "class": "hint", text: "Not posted: nothing visible changed" })
+          ? el("td", { "class": "hint", text: "Not posted: " + ((state.skipReasons || {})[e.skipped] || "nothing visible changed") })
           : el("td", { style: "color:var(" + (e.ok ? "--ok" : "--bad") + ")",
                        text: e.ok ? "Delivered" : "Failed (" + e.status + ") " + (e.detail || "") })
       ]);
@@ -319,6 +321,10 @@ function openForm(c) {
   $("f-platform").value = c ? c.platform : "google-chat";
   $("f-chatUrl").value = c ? c.chatUrl : "";
   $("f-token").value = c ? c.token : "";
+  $("f-only").replaceChildren.apply($("f-only"), Object.keys(state.audiences).map(function (k) {
+    return el("option", { value: k, text: state.audiences[k] });
+  }));
+  $("f-only").value = c && state.audiences[c.only] ? c.only : "assigned-or-next";
   templates = {};
   state.events.forEach(function (e) { templates[e.key] = c && c.templates && c.templates[e.key] != null ? c.templates[e.key] : e.template; });
   $("f-event").replaceChildren.apply($("f-event"), state.events.map(function (e) { return el("option", { value: e.key, text: e.label }); }));
@@ -385,7 +391,7 @@ $("form").addEventListener("submit", function (ev) {
   ev.preventDefault();
   var body = {
     name: $("f-name").value, platform: $("f-platform").value, chatUrl: $("f-chatUrl").value, token: $("f-token").value,
-    templates: templates
+    only: $("f-only").value, templates: templates
   };
   var req = editing ? call("PUT", "/api/connections/" + editing.id, body) : call("POST", "/api/connections", body);
   req.then(function () { $("dialog").close(); return load(); })
