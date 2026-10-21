@@ -1,14 +1,16 @@
 // Turns a zInspector webhook event into a chat message, from an editable template.
 //
-// Template syntax: {{path}} reads the event (e.g. {{data.propertyName}}, {{data.status}}, {{type}}).
-// Extras: {{mention}} (the assignee, @mentioned when their chat id is on file), {{taskLink}} (from the
-// task link setting). A line, or a part of a line between " · ", is left out when one of its
-// placeholders is empty or missing.
+// Template syntax: {{path}} reads the event (e.g. {{data.propertyName}}, {{data.status}}, {{type}}), and
+// ready-made values come from taskview.js ({{taskTitle}}, {{assignee}}, {{changes}}, ...). A line, or a
+// part of a line between " · ", is left out when one of its placeholders is empty or missing.
 
 export const PLATFORMS = {
   "google-chat": { label: "Google Chat", urlPrefix: "https://chat.googleapis.com/" },
   slack: { label: "Slack", urlPrefix: "https://hooks.slack.com/" },
 };
+
+import { taskExtras, nothingChanged, snapshotOf } from "./taskview.js";
+import { LEGACY_TEMPLATES } from "./legacy.js";
 
 // zInspector's finished statuses that mean the work got done (Canceled and Deferred don't celebrate).
 export const DEFAULT_COMPLETED = "Work Complete,Closed";
@@ -17,88 +19,54 @@ export const TEST_MESSAGE = "✅ zInspector is connected to this chat.";
 export const MAX_TEMPLATE = 4000;
 
 // One entry per zInspector webhook event (plus "completed", a variant of task.updated, and a fallback).
+// Messages about one task share a Google Chat thread, so each says only what's new and stays short.
 export const EVENTS = [
   {
     key: "task.created",
     label: "Task created",
     template: [
-      "✨ *We have a new task!* ✨",
-      "",
-      "📋 *{{data.type}}*",
+      "🆕 *New task* · {{taskTitle}} · Ref {{data.referenceNumber}}",
       "🏠 {{data.propertyName}} · {{data.propertyAddress}}",
-      "👤 Assigned to {{mention}}",
-      "🎯 Status: {{data.status}} · Priority: {{data.priority}}",
-      "#️⃣ Ref {{data.referenceNumber}}",
-      "",
-      "> {{data.description}}",
-      "",
-      "<{{taskLink}}|Open in zInspector>",
+      "👤 {{assigneeOrUnassigned}} · 📅 Due {{dueDate}} · {{priorityFlag}}",
+      "> {{shortDescription}}",
     ].join("\n"),
   },
   {
     key: "task.updated",
     label: "Task updated",
-    hint: "status is not a done status",
-    template: [
-      "✏️ *Task updated:* {{data.type}}",
-      "",
-      "🏠 {{data.propertyName}}",
-      "👤 {{mention}}",
-      "🔄 Status: *{{data.status}}*",
-      "#️⃣ Ref {{data.referenceNumber}}",
-      "",
-      "<{{taskLink}}|View task>",
-    ].join("\n"),
+    hint: "posted only when something visible changed (status, assignee, dates, priority…); the list shows what",
+    template: ["✏️ {{taskTitle}} · Ref {{data.referenceNumber}}", "{{changes}}"].join("\n"),
   },
   {
     key: "task.completed",
     label: "Task completed",
-    hint: "a Task updated event whose status is a done status",
-    template: [
-      "🎉 🎉 *Task completed!* 🎉 🎉",
-      "",
-      "✅ *{{data.type}}* is done.",
-      "🏠 {{data.propertyName}}",
-      "Great work, {{mention}}! 🎊",
-      "",
-      "#️⃣ Ref {{data.referenceNumber}}",
-      "<{{taskLink}}|See the finished task>",
-    ].join("\n"),
+    hint: "a Task updated whose status just moved to a done status (once per task)",
+    template: ["✅ *{{data.status}}* · {{taskTitle}} · Ref {{data.referenceNumber}}", "🎉 Nice work, {{assignee}}!"].join("\n"),
   },
   {
     key: "task.message.created",
     label: "New task message",
     template: [
-      "💬 *New message on a task:* {{data.type}}",
-      "",
-      "🏠 {{data.propertyName}}",
-      "#️⃣ Ref {{data.referenceNumber}}",
-      "",
-      "> {{data.message}}",
-      "",
-      "<{{taskLink}}|Reply in zInspector>",
+      "💬 *New message* · {{taskTitle}} · Ref {{data.referenceNumber}}",
+      "> {{messageText}}",
+      "— {{messageAuthor}}",
     ].join("\n"),
   },
   {
     key: "report.distributed",
     label: "Reports distributed",
-    template: ["📄 *A report was sent*", "", "🏠 {{data.propertyName}} · {{data.propertyAddress}}", "#️⃣ Ref {{data.referenceNumber}}"].join("\n"),
+    template: ["📄 *Report sent* · {{data.propertyName}} · Ref {{data.referenceNumber}}", "🏠 {{data.propertyAddress}}"].join("\n"),
   },
   {
     key: "zdata.changed",
     label: "zData changed",
-    template: [
-      "🗂️ *zData {{data.actionType}}:* {{data.area}} › {{data.detail}}",
-      "",
-      "🏠 {{data.propertyName}}",
-      "Value: {{data.zData}}",
-    ].join("\n"),
+    template: ["🗂️ *{{data.area}} › {{data.detail}}* {{data.actionType}} · {{data.propertyName}}", "{{data.zData}}"].join("\n"),
   },
   {
     key: "other",
     label: "Any other event",
     hint: "events zInspector adds later",
-    template: ["🔔 *zInspector: {{type}}*", "", "🏠 {{data.propertyName}}", "📋 {{data.type}}"].join("\n"),
+    template: "🔔 *{{type}}* · {{data.propertyName}} · {{data.type}}",
   },
 ];
 
@@ -109,33 +77,50 @@ const TASK_EXAMPLE = {
   id: 2160012,
   type: "Marketing Required",
   status: { id: 1, value: "New" },
-  priority: 3,
-  assignedTo: { id: 42116, name: "Tania Aquirre", email: "tania@zinspector.com" },
+  priority: 4,
+  endDate: "2026-10-30",
+  assignedTo: { id: 42116, name: "Tania Aguirre", email: "tania@zinspector.com" },
   propertyName: "Marketing.Conferences",
   propertyAddress: "123 Jones, Davis, CA 95616, US",
   referenceNumber: "313307",
-  description: "test task",
+  description: "Book the booth and send the attendee list by Friday.",
+};
+const UPDATED_EXAMPLE = {
+  ...TASK_EXAMPLE,
+  status: { id: 2, value: "In Progress" },
+  assignedTo: { id: 49612, name: "Tim Wallace", email: "tim+onsight@zinspector.com" },
+  endDate: "2026-11-02",
 };
 export const EXAMPLES = {
   "task.created": { type: "task.created", data: TASK_EXAMPLE },
-  "task.updated": { type: "task.updated", data: { ...TASK_EXAMPLE, status: { id: 2, value: "In Progress" } } },
-  "task.completed": { type: "task.updated", data: { ...TASK_EXAMPLE, status: { id: 5, value: "Work Complete" } } },
-  "task.message.created": { type: "task.message.created", data: { ...TASK_EXAMPLE, message: "Can we move this to Friday?" } },
+  "task.updated": { type: "task.updated", data: UPDATED_EXAMPLE },
+  "task.completed": { type: "task.updated", data: { ...UPDATED_EXAMPLE, status: { id: 5, value: "Work Complete" } } },
+  "task.message.created": {
+    type: "task.message.created",
+    data: { ...TASK_EXAMPLE, message: { author: "Greg Owen", body_text: "Can we move this to Friday? The venue changed.\n\n-- \nGreg Owen • CTO" } },
+  },
   "report.distributed": { type: "report.distributed", data: { propertyName: "Marketing.Conferences", propertyAddress: "123 Jones, Davis, CA 95616, US", referenceNumber: "313307" } },
   "zdata.changed": { type: "zdata.changed", data: { propertyName: "Marketing.Conferences", area: "Account", detail: "Software in use", zData: "AppFolio", actionType: "Updated" } },
   other: { type: "some.event", data: { propertyName: "Marketing.Conferences", type: "Marketing Required" } },
 };
+// What the task looked like before each example, so the previews can show changes.
+export const EXAMPLE_PREVIOUS = {
+  "task.updated": snapshotOf(TASK_EXAMPLE),
+  "task.completed": snapshotOf(UPDATED_EXAMPLE),
+};
 
-// Which template an event uses: "test", one of EVENT_KEYS, or "other".
-export function eventKind(event, settings = {}) {
+// Which template an event uses: "test", one of EVENT_KEYS, or "other". `previous` is the task's last
+// known state: a completion counts once, when the status moves into a done status.
+export function eventKind(event, settings = {}, previous = null) {
   if (event.type === "webhook.test") return "test";
   if (event.type === "task.updated") {
-    const status = valueText(event.data?.status).toLowerCase();
     const done = (settings.completedStatuses || DEFAULT_COMPLETED)
       .split(",")
       .map((s) => s.trim().toLowerCase())
       .filter(Boolean);
-    return status && done.includes(status) ? "task.completed" : "task.updated";
+    const isDone = (status) => Boolean(status) && done.includes(String(status).toLowerCase());
+    const nowDone = isDone(valueText(event.data?.status));
+    return nowDone && !isDone(previous?.status) ? "task.completed" : "task.updated";
   }
   return EVENT_KEYS.includes(event.type) && event.type !== "other" ? event.type : "other";
 }
@@ -145,17 +130,27 @@ export function defaultTemplates() {
   return Object.fromEntries(EVENTS.map((e) => [e.key, e.template]));
 }
 
-export function buildMessage(event, connection, settings = {}) {
-  const kind = eventKind(event, settings);
+// The message for an event, or null when there's nothing worth posting (an update that changed nothing).
+export function buildMessage(event, connection, settings = {}, previous = null) {
+  const kind = eventKind(event, settings, previous);
   if (kind === "test") return TEST_MESSAGE;
-  const template = connection.templates?.[kind] ?? EVENTS.find((e) => e.key === kind).template;
-  return render(template, event, settings, connection.platform);
+  if (kind === "task.updated" && nothingChanged(previous, event.data)) return null;
+  return render(templateFor(connection, kind), event, settings, connection.platform, previous, kind);
 }
 
-export function render(template, event, settings = {}, platform = "google-chat") {
+// A saved message still identical to an earlier default moves to the current default.
+export function templateFor(connection, kind) {
+  const fallback = EVENTS.find((e) => e.key === kind).template;
+  const saved = connection.templates?.[kind];
+  return saved == null || LEGACY_TEMPLATES[kind]?.includes(saved) ? fallback : saved;
+}
+
+export function render(template, event, settings = {}, platform = "google-chat", previous = null, kind = null) {
+  const mentionOf = (person) => mentionFor(person, settings.people, platform);
+  const link = taskUrl(event.data?.id, settings.taskUrl);
   const extras = {
-    mention: mentionFor(event.data?.assignedTo, settings.people, platform),
-    taskLink: taskUrl(event.data?.id, settings.taskUrl),
+    ...taskExtras({ event, previous, kind: kind || eventKind(event, settings, previous), link, mentionOf }),
+    mention: mentionOf(event.data?.assignedTo || event.data?.assignedToContact),
   };
   const lookup = (path) => (Object.hasOwn(extras, path) ? extras[path] || "" : valueText(read(event, path)));
 

@@ -52,23 +52,41 @@ test("relays a new task to the connection's chat and logs it", async () => {
     assert.equal(res.status, 200);
     assert.equal(calls.length, 1);
     assert.ok(calls[0].url.startsWith("https://chat.googleapis.com/v1/spaces/AAA/messages"));
-    assert.match(calls[0].body.text, /We have a new task/);
+    assert.match(calls[0].body.text, /^🆕 \*New task\*/);
   });
   const log = await (await admin(env, "GET", `/api/connections/${c.id}/log`)).json();
   assert.deepEqual([log[0].kind, log[0].ref, log[0].ok], ["task.created", "313307", true]);
 });
 
-test("posts every event zInspector sends, each with its own message", async () => {
+test("posts each update with only what changed, and skips updates that changed nothing", async () => {
   const env = makeEnv();
   const c = await addConnection(env);
   await withChat(200, async (calls) => {
+    await hook(env, c.id, created, "secret-1");
+    const unchanged = await hook(env, c.id, { ...created, type: "task.updated" }, "secret-1");
+    assert.equal(await unchanged.text(), "No visible change, so nothing was posted.");
     await hook(env, c.id, withStatus("In Progress"), "secret-1");
     await hook(env, c.id, withStatus("Work Complete"), "secret-1");
     await hook(env, c.id, { type: "zdata.changed", data: { area: "Account", detail: "Notes", actionType: "Updated" } }, "secret-1");
-    assert.deepEqual(
-      calls.map((call) => call.body.text.split("\n")[0]),
-      ["✏️ *Task updated:* Marketing Required", "🎉 🎉 *Task completed!* 🎉 🎉", "🗂️ *zData Updated:* Account › Notes"],
-    );
+    assert.equal(calls.length, 4);
+    assert.match(calls[1].body.text, /• Status: New → \*In Progress\*$/);
+    assert.match(calls[2].body.text, /^✅ \*Work Complete\*/);
+    assert.match(calls[3].body.text, /^🗂️ \*Account › Notes\* Updated/);
+  });
+  const log = await (await admin(env, "GET", `/api/connections/${c.id}/log`)).json();
+  assert.equal(log.find((e) => e.skipped).kind, "task.updated");
+});
+
+test("celebrates a completion once, not on every later edit of a done task", async () => {
+  const env = makeEnv();
+  const c = await addConnection(env);
+  await withChat(200, async (calls) => {
+    await hook(env, c.id, withStatus("Work Complete"), "secret-1");
+    await hook(env, c.id, { ...withStatus("Work Complete"), data: { ...withStatus("Work Complete").data, priority: 5 } }, "secret-1");
+    await hook(env, c.id, withStatus("Closed"), "secret-1");
+    assert.equal(calls.filter((call) => call.body.text.startsWith("✅")).length, 1);
+    assert.match(calls[1].body.text, /Priority: Normal → \*Highest\*/);
+    assert.match(calls[2].body.text, /Status: Work Complete → \*Closed\*/);
   });
 });
 
@@ -127,7 +145,7 @@ test("the page's Send test posts a connected message", async () => {
   });
 });
 
-test("people saved in settings are @mentioned in relayed alerts", async () => {
+test("people saved in settings are @mentioned on a new task, not on every update", async () => {
   const env = makeEnv();
   const c = await addConnection(env);
   const saved = await admin(env, "PUT", "/api/settings", {
@@ -137,7 +155,9 @@ test("people saved in settings are @mentioned in relayed alerts", async () => {
   assert.deepEqual((await saved.json()).people, [{ email: "tania@zinspector.com", googleChatId: "555", slackId: "" }]);
   await withChat(200, async (calls) => {
     await hook(env, c.id, created, "secret-1");
-    assert.match(calls[0].body.text, /Assigned to <users\/555>/);
+    await hook(env, c.id, withStatus("In Progress"), "secret-1");
+    assert.match(calls[0].body.text, /👤 <users\/555>/);
+    assert.doesNotMatch(calls[1].body.text, /users\/555/);
   });
 });
 
@@ -155,22 +175,36 @@ test("links each message to its own task page without any setup", async () => {
   const c = await addConnection(env);
   await withChat(200, async (calls) => {
     await hook(env, c.id, created, "secret-1");
-    assert.match(calls[0].body.text, /<https:\/\/dashboard\.zinspector\.com\/task\/view\/2160012\|Open in zInspector>$/);
+    assert.match(calls[0].body.text, /<https:\/\/dashboard\.zinspector\.com\/task\/view\/2160012\|Marketing Required>/);
   });
 });
 
 test("Work Complete and Closed celebrate; Canceled and Deferred don't", async () => {
-  const env = makeEnv();
-  const c = await addConnection(env);
-  await withChat(200, async (calls) => {
-    for (const status of ["Work Complete", "Closed", "Canceled", "Deferred"]) {
+  for (const [status, celebrates] of [["Work Complete", true], ["Closed", true], ["Canceled", false], ["Deferred", false]]) {
+    const env = makeEnv();
+    const c = await addConnection(env);
+    await withChat(200, async (calls) => {
       await hook(env, c.id, withStatus(status), "secret-1");
-    }
-    assert.deepEqual(
-      calls.map((call) => call.body.text.includes("Task completed")),
-      [true, true, false, false],
-    );
+      assert.equal(calls[0].body.text.startsWith("✅"), celebrates, status);
+    });
+  }
+});
+
+test("messages saved with the old default copy move to the new one; edited ones stay", async () => {
+  const env = makeEnv();
+  const { LEGACY_TEMPLATES } = await import("../src/legacy.js");
+  const c = await addConnection(env, {
+    ...marketing,
+    templates: { "task.created": LEGACY_TEMPLATES["task.created"][0], "task.updated": "Mine: {{data.status}}" },
   });
+  await withChat(200, async (calls) => {
+    await hook(env, c.id, created, "secret-1");
+    await hook(env, c.id, withStatus("In Progress"), "secret-1");
+    assert.match(calls[0].body.text, /^🆕/);
+    assert.equal(calls[1].body.text, "Mine: In Progress");
+  });
+  const state = await (await admin(env, "GET", "/api/state")).json();
+  assert.match(state.connections[0].templates["task.created"], /^🆕/);
 });
 
 test("settings saved with the old defaults move to zInspector's statuses and task link", async () => {

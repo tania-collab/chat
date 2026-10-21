@@ -128,7 +128,9 @@ export const ADMIN_HTML = String.raw`<!doctype html>
     <input type="password" id="f-token" autocomplete="off">
     <h2 style="margin:24px 0 4px">Messages</h2>
     <div class="hint">{{field}} puts in a value from the event. A line, or a part of a line between " · ", is left out when one of its fields is empty.
-      Extras: {{mention}} @mentions the assignee, {{taskLink}} is the task link from Settings. Formatting: *bold*, _italic_, &lt;link|text&gt;.</div>
+      Ready-made: {{taskTitle}} (the task, linked), {{assignee}} (@mentioned on new tasks, new assignments and completions),
+      {{changes}} (what an update changed), {{dueDate}}, {{priorityFlag}} (only when not normal), {{shortDescription}},
+      {{messageText}} and {{messageAuthor}}. Formatting: *bold*, _italic_, &lt;link|text&gt;.</div>
     <label for="f-event">Event</label>
     <select id="f-event"></select>
     <div class="hint" id="f-eventHint"></div>
@@ -301,8 +303,10 @@ function logTable(log) {
         el("td", { text: new Date(e.at).toLocaleString() }),
         el("td", { text: e.kind === "other" ? e.type : (label[e.kind] || e.kind) }),
         el("td", { text: e.ref ? "Ref " + e.ref : (e.taskId != null ? "#" + e.taskId : "") }),
-        el("td", { style: "color:var(" + (e.ok ? "--ok" : "--bad") + ")",
-                   text: e.ok ? "Delivered" : "Failed (" + e.status + ") " + (e.detail || "") })
+        e.skipped
+          ? el("td", { "class": "hint", text: "Not posted: nothing visible changed" })
+          : el("td", { style: "color:var(" + (e.ok ? "--ok" : "--bad") + ")",
+                       text: e.ok ? "Delivered" : "Failed (" + e.status + ") " + (e.detail || "") })
       ]);
     }))
   ]);

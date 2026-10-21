@@ -7,13 +7,14 @@
 // Sign-in: Cloudflare Access (ACCESS_TEAM_DOMAIN + ACCESS_AUD) when set, else the ADMIN_PASSWORD secret.
 // Bindings: KV namespace RELAY.
 
-import { buildMessage, eventKind, deliveryUrl, render, fieldPaths, EVENTS, EXAMPLES, TEST_MESSAGE } from "./messages.js";
+import { buildMessage, eventKind, deliveryUrl, render, fieldPaths, templateFor, EVENTS, EXAMPLES, EXAMPLE_PREVIOUS, TEST_MESSAGE } from "./messages.js";
+import { snapshotOf, EXTRA_NAMES } from "./taskview.js";
 import {
   getConnections,
   saveConnections,
   getSettings,
   getActivity,
-  addActivity,
+  saveActivity,
   deleteActivity,
   cleanConnection,
   cleanSettings,
@@ -71,11 +72,18 @@ async function relay(request, env, id) {
 
   if (!event || typeof event.type !== "string") return text("Not a zInspector event", 400);
 
-  // zInspector decides which events this webhook sends; every one that arrives is posted.
+  // zInspector decides which events this webhook sends; each one is posted unless it changed nothing visible.
   const settings = await getSettings(env.RELAY);
-  const kind = eventKind(event, settings);
-  const result = await postToChat(connection, event, buildMessage(event, connection, settings));
-  await addActivity(env.RELAY, connection.id, logEntry(kind, event, result), kind, event);
+  const activity = await getActivity(env.RELAY, connection.id);
+  const isTask = event.type.startsWith("task.") && event.type !== "task.message.created" && event.data?.id != null;
+  const previous = isTask ? activity.tasks[String(event.data.id)] || null : null;
+  const kind = eventKind(event, settings, previous);
+  const message = buildMessage(event, connection, settings, previous);
+  const result = message === null
+    ? { ok: true, status: 200, body: "No visible change, so nothing was posted.", skipped: true }
+    : await postToChat(connection, event, message);
+  const snapshot = isTask && result.ok ? snapshotOf(event.data) : null;
+  await saveActivity(env.RELAY, connection.id, activity, { entry: logEntry(kind, event, result), kind, event, previous, snapshot });
   // Pass the chat's answer back so zInspector's Delivery History shows it.
   return text(result.body, result.ok ? 200 : 502);
 }
@@ -97,6 +105,7 @@ function logEntry(kind, event, result) {
     taskId: event.data?.id ?? null,
     ref: event.data?.referenceNumber || null,
     ok: result.ok,
+    skipped: Boolean(result.skipped),
     status: result.status,
     detail: result.ok ? "" : result.body.slice(0, 300),
   };
@@ -109,7 +118,11 @@ async function api(request, env, url, user) {
 
   if (parts[1] === "state" && method === "GET") {
     return json({
-      connections: await getConnections(kv),
+      // Messages still on an earlier default show (and save) as the current default.
+      connections: (await getConnections(kv)).map((c) => ({
+        ...c,
+        templates: Object.fromEntries(EVENTS.map((e) => [e.key, templateFor(c, e.key)])),
+      })),
       settings: await getSettings(kv),
       hookBase: `${url.origin}/hook/`,
       user: user.email,
@@ -124,10 +137,11 @@ async function api(request, env, url, user) {
     const activity = input.connectionId ? await getActivity(kv, String(input.connectionId)) : { samples: {} };
     const sample = activity.samples[kind];
     const event = sample?.event || EXAMPLES[kind];
+    const previous = sample ? sample.previous || null : EXAMPLE_PREVIOUS[kind] || null;
     const platform = input.platform === "slack" ? "slack" : "google-chat";
     return json({
-      text: render(String(input.template || ""), event, await getSettings(kv), platform),
-      fields: fieldPaths(event),
+      text: render(String(input.template || ""), event, await getSettings(kv), platform, previous, kind),
+      fields: [...EXTRA_NAMES, ...fieldPaths(event)],
       source: sample ? "real" : "example",
       at: sample?.at || null,
     });
@@ -170,7 +184,7 @@ async function api(request, env, url, user) {
     const event = { type: "webhook.test" };
     const result = await postToChat(existing, event, TEST_MESSAGE);
     const entry = logEntry("test", event, result);
-    await addActivity(kv, id, entry, "test", event);
+    await saveActivity(kv, id, await getActivity(kv, id), { entry, kind: "test", event });
     return json({ ok: entry.ok, status: entry.status, detail: entry.detail });
   }
   return json({ error: "Not found" }, 404);

@@ -4,6 +4,7 @@ import { PLATFORMS, DEFAULT_COMPLETED, DEFAULT_TASK_URL, EVENTS, MAX_TEMPLATE } 
 
 const LOG_SIZE = 20;
 const MAX_PEOPLE = 5000;
+const TASKS_KEPT = 300;
 
 export async function getConnections(kv) {
   return (await kv.get("connections", "json")) || [];
@@ -25,15 +26,22 @@ export async function getSettings(kv) {
   };
 }
 
-// Per connection: the last deliveries, and the last event of each kind (for previews and field names).
+// Per connection, in one KV value (one write per delivery): the last deliveries, the last event of each
+// kind (for previews and field names), and the last known state of recent tasks (to tell what changed).
 export async function getActivity(kv, id) {
-  return { entries: [], samples: {}, ...((await kv.get(`log:${id}`, "json")) || {}) };
+  return { entries: [], samples: {}, tasks: {}, ...((await kv.get(`log:${id}`, "json")) || {}) };
 }
 
-export async function addActivity(kv, id, entry, kind, event) {
-  const activity = await getActivity(kv, id);
-  const samples = kind && kind !== "test" ? { ...activity.samples, [kind]: { at: entry.at, event } } : activity.samples;
-  await kv.put(`log:${id}`, JSON.stringify({ entries: [entry, ...activity.entries].slice(0, LOG_SIZE), samples }));
+export async function saveActivity(kv, id, activity, { entry, kind, event, previous = null, snapshot = null }) {
+  const samples = kind && kind !== "test" ? { ...activity.samples, [kind]: { at: entry.at, event, previous } } : activity.samples;
+  let tasks = activity.tasks;
+  const taskId = event.data?.id;
+  if (snapshot && taskId != null) {
+    // Re-insert so the most recently seen tasks are kept when trimming.
+    const { [taskId]: _, ...rest } = tasks;
+    tasks = Object.fromEntries([...Object.entries(rest), [String(taskId), snapshot]].slice(-TASKS_KEPT));
+  }
+  await kv.put(`log:${id}`, JSON.stringify({ entries: [entry, ...activity.entries].slice(0, LOG_SIZE), samples, tasks }));
 }
 
 export async function deleteActivity(kv, id) {
