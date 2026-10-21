@@ -21,8 +21,8 @@ test("a new task fits in a few lines, with the task name as its link", () => {
   );
 });
 
-test("says when a new task has nobody on it, and leaves out normal priority and missing dates", () => {
-  const text = buildMessage({ ...created, data: { ...created.data, assignedTo: null } }, gchat);
+test("says when a new task has nobody on it (for chats that get all tasks), and leaves out normal priority and missing dates", () => {
+  const text = buildMessage({ ...created, data: { ...created.data, assignedTo: null } }, { ...gchat, only: "all" });
   assert.match(text, /👤 _Unassigned_$/m);
   assert.doesNotMatch(text, /priority|Due/);
 });
@@ -57,8 +57,9 @@ test("an update that changed nothing visible isn't posted", () => {
   assert.equal(buildMessage(update({}), gchat, {}, snapshotOf(created.data)), null);
 });
 
-test("an update of a task seen for the first time says where it stands", () => {
-  assert.match(buildMessage(update({ status: { value: "In Progress" } }), gchat), /• Status: \*In Progress\*\n• Assigned: \*Tania Aquirre\*$/);
+test("the first update of a task the chat never saw isn't posted", () => {
+  assert.equal(buildMessage(update({ status: { value: "In Progress" } }), gchat), null);
+  assert.equal(eventKind(withStatus("Work Complete")), "task.updated");
 });
 
 test("a completion counts once: when the status moves into a done status", () => {
@@ -81,7 +82,10 @@ test("a new message shows its author and the first lines, without signature or H
     "💬 *New message* · *Marketing Required* · Ref 313307\n> If this shows up as a task, we're ready.\n— Greg Owen",
   );
   const html = { type: "task.message.created", data: { comment: "<div>Hello <b>there</b>&nbsp;team</div><div>On Mon, Oct 20 Ann wrote:</div>" } };
-  assert.match(buildMessage(html, gchat), /> Hello there team$/m);
+  assert.match(buildMessage(html, { ...gchat, only: "all" }), /> Hello there team$/m);
+  // Without people on the event, a message follows the task's last known state.
+  assert.equal(buildMessage(html, gchat), null);
+  assert.match(buildMessage(html, gchat, {}, snapshotOf(created.data)), /> Hello there team$/m);
 });
 
 test("uses the connection's own edited copy", () => {

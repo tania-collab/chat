@@ -7,7 +7,7 @@
 // Sign-in: Cloudflare Access (ACCESS_TEAM_DOMAIN + ACCESS_AUD) when set, else the ADMIN_PASSWORD secret.
 // Bindings: KV namespace RELAY.
 
-import { buildMessage, eventKind, deliveryUrl, render, fieldPaths, templateFor, EVENTS, EXAMPLES, EXAMPLE_PREVIOUS, TEST_MESSAGE } from "./messages.js";
+import { buildMessage, skipReason, SKIP_REASONS, AUDIENCES, eventKind, deliveryUrl, render, fieldPaths, templateFor, EVENTS, EXAMPLES, EXAMPLE_PREVIOUS, TEST_MESSAGE } from "./messages.js";
 import { snapshotOf, EXTRA_NAMES } from "./taskview.js";
 import {
   getConnections,
@@ -75,14 +75,16 @@ async function relay(request, env, id) {
   // zInspector decides which events this webhook sends; each one is posted unless it changed nothing visible.
   const settings = await getSettings(env.RELAY);
   const activity = await getActivity(env.RELAY, connection.id);
-  const isTask = event.type.startsWith("task.") && event.type !== "task.message.created" && event.data?.id != null;
-  const previous = isTask ? activity.tasks[String(event.data.id)] || null : null;
+  const taskId = event.type.startsWith("task.") ? event.data?.id : null;
+  const previous = taskId != null ? activity.tasks[String(taskId)] || null : null;
   const kind = eventKind(event, settings, previous);
-  const message = buildMessage(event, connection, settings, previous);
-  const result = message === null
-    ? { ok: true, status: 200, body: "No visible change, so nothing was posted.", skipped: true }
-    : await postToChat(connection, event, message);
-  const snapshot = isTask && result.ok ? snapshotOf(event.data) : null;
+  const skip = skipReason(event, connection, settings, previous);
+  const result = skip
+    ? { ok: true, status: 200, body: `Not posted: ${SKIP_REASONS[skip]}.`, skipped: skip }
+    : await postToChat(connection, event, buildMessage(event, connection, settings, previous));
+  // Remember the task's state (also when not posted) so the next update can say what changed.
+  const keepsState = taskId != null && event.type !== "task.message.created" && result.ok;
+  const snapshot = keepsState ? snapshotOf(event.data) : null;
   await saveActivity(env.RELAY, connection.id, activity, { entry: logEntry(kind, event, result), kind, event, previous, snapshot });
   // Pass the chat's answer back so zInspector's Delivery History shows it.
   return text(result.body, result.ok ? 200 : 502);
@@ -105,7 +107,7 @@ function logEntry(kind, event, result) {
     taskId: event.data?.id ?? null,
     ref: event.data?.referenceNumber || null,
     ok: result.ok,
-    skipped: Boolean(result.skipped),
+    skipped: result.skipped || false,
     status: result.status,
     detail: result.ok ? "" : result.body.slice(0, 300),
   };
@@ -127,6 +129,8 @@ async function api(request, env, url, user) {
       hookBase: `${url.origin}/hook/`,
       user: user.email,
       events: EVENTS,
+      audiences: AUDIENCES,
+      skipReasons: SKIP_REASONS,
     });
   }
 

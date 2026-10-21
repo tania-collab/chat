@@ -56,11 +56,6 @@ export function taskExtras({ event, previous, kind, link, mentionOf }) {
   const assignee = now.assignee ? (mentionAssignee ? mentionOf(now.assignee) : `*${now.assignee.name}*`) : "";
   const title = now.type || "Task";
 
-  if (!previous && kind === "task.updated") {
-    // First time this task is seen: no history to compare, so say where it stands.
-    if (now.status) changes.push(`• Status: *${now.status}*`);
-    if (assignee) changes.push(`• Assigned: ${assignee}`);
-  }
   return {
     taskTitle: link ? `<${link}|${title}>` : `*${title}*`,
     taskLink: link || "",

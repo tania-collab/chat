@@ -1,6 +1,6 @@
 // Connections, settings and delivery logs, kept in the Workers KV namespace bound as RELAY.
 
-import { PLATFORMS, DEFAULT_COMPLETED, DEFAULT_TASK_URL, EVENTS, MAX_TEMPLATE } from "./messages.js";
+import { PLATFORMS, DEFAULT_COMPLETED, DEFAULT_TASK_URL, EVENTS, MAX_TEMPLATE, AUDIENCES, DEFAULT_AUDIENCE } from "./messages.js";
 
 const LOG_SIZE = 20;
 const MAX_PEOPLE = 5000;
@@ -74,6 +74,7 @@ export function cleanConnection(input, existing = {}, by = null) {
       platform,
       chatUrl,
       token: String(input.token || "").trim(),
+      only: AUDIENCES[input.only] ? input.only : DEFAULT_AUDIENCE,
       templates,
     },
   };
