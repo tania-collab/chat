@@ -7,25 +7,27 @@ has its own address that you paste as the **Destination URL** of a zInspector we
 which events it sends (events and filters are set on its Edit Webhook screen); the app checks the webhook
 token, writes the message for that event, and posts it to the connection's chat.
 
-New, newly assigned and finished tasks arrive in Google Chat as a card, written like a short note:
+New, newly assigned and finished tasks arrive in Google Chat as a sentence about the person plus one compact
+card:
 
 ```
-Tim has a new task                                   ← heading (editable per chat)
-from Laura · Conferences · Due Fri, Oct 30 · 🔺 High priority
-──────────────────────────────────────────
-Book the booth                                       ← the task's title (its description)
-"Book the booth and send the attendee list…"         ← the rest of a long description
-[ Open the task ]
+@AJ Muldowney has a new task · from Tania        ← the message (editable per chat)
+┌──────────────────────────────────────────┐
+│ BizDev / Strategic                       │     ← area
+│ Marketing Inbox test              [Open] │     ← the task's title (its description)
+│ Due Sat, Oct 24                          │     ← due date, priority if not normal
+└──────────────────────────────────────────┘
 ```
 
-When the assignee's Google Chat id is on file (People), they're @mentioned just above the card, which is what
-notifies them. Slack gets the same note as text. Other alerts are short text messages:
+The person is @mentioned (which notifies them) on a new task or a task just given to them, when their Google
+Chat id is on file (People). Finished tasks name them without a ping. Slack gets the same message as text.
+Other alerts are short text messages:
 
 | zInspector event | Message |
 |---|---|
-| Task created | card: "Tim has a new task" |
-| Task updated that gives the task to someone | card: "Tim was assigned a task" |
-| Task updated into a "done" status | card: "Tim finished a task ✅", with how it ended (Work Complete / Closed) |
+| Task created | "@Tim Wallace has a new task · from Laura" + card |
+| Task updated that gives the task to someone | "@Tim Wallace was assigned a task · from Laura" + card |
+| Task updated into a "done" status | "🎉 Tim finished a task!" + card with how it ended (Work Complete / Closed) |
 | Other task updates (off by default) | ✏️ task · then only what changed: `Status: New → In Progress`, `Due: Nov 2`… |
 | New task message (off by default) | 💬 *New message* · task; the first lines of the message, without signature; its author |
 | Reports distributed | 📄 *Report sent* · property · Ref |

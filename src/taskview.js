@@ -53,7 +53,9 @@ export function taskExtras({ event, previous, kind, link, mentionOf }) {
   const now = snapshotOf(data);
   const changes = changesBetween(previous, now, mentionOf);
   const newlyAssigned = previous && personKey(previous.assignee) !== personKey(now.assignee);
-  const mentionAssignee = kind !== "task.updated" || newlyAssigned;
+  // @mention when the person has something to do: a new task or one just given to them. Not when they
+  // finished it, and not on every update.
+  const mentionAssignee = kind === "task.created" || kind === "task.assigned" || (kind === "task.updated" && newlyAssigned);
   const assignee = now.assignee ? (mentionAssignee ? mentionOf(now.assignee) : `*${now.assignee.name}*`) : "";
   // zInspector shows a task's description as its title; the type ("Marketing Required") is its category.
   const typeLabel = now.type.replace(/ Required$/, "");

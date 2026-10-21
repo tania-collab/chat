@@ -26,17 +26,16 @@ export const EVENTS = [
     key: "task.created",
     label: "Task created",
     card: true,
-    fallback: "New task",
-    hint: "the card's heading; the assignee is @mentioned above the card when their chat id is on file",
-    template: "{{assigneeFirstName}} has a new task",
+    unassigned: "New task · from {{managerName}}",
+    hint: "the sentence above the card; {{assignee}} @mentions them when their chat id is on file",
+    template: "{{assignee}} has a new task · from {{managerName}}",
   },
   {
     key: "task.assigned",
     label: "Task newly assigned",
     card: true,
-    fallback: "A task was assigned",
-    hint: "a Task updated that gave the task to someone; the card's heading",
-    template: "{{assigneeFirstName}} was assigned a task",
+    hint: "a Task updated that gave the task to someone; the sentence above the card",
+    template: "{{assignee}} was assigned a task · from {{managerName}}",
   },
   {
     key: "task.updated",
@@ -48,9 +47,9 @@ export const EVENTS = [
     key: "task.completed",
     label: "Task completed",
     card: true,
-    fallback: "A task was finished",
-    hint: "a Task updated whose status just moved to a done status (once per task); the card's heading",
-    template: "{{assigneeFirstName}} finished a task ✅",
+    unassigned: "🎉 A task was finished!",
+    hint: "a Task updated whose status just moved to a done status (once per task); the sentence above the card",
+    template: "🎉 {{assigneeFirstName}} finished a task!",
   },
   {
     key: "task.message.created",
@@ -218,9 +217,11 @@ export function buildMessage(event, connection, settings = {}, previous = null) 
   const kind = eventKind(event, settings, previous);
   if (kind === "test") return TEST_MESSAGE;
   if (skipReason(event, connection, settings, previous)) return null;
-  const text = render(templateFor(connection, kind), event, settings, connection.platform, previous, kind);
   const info = EVENTS.find((e) => e.key === kind);
-  return info?.card ? text.replace(/[*_]/g, "").trim() || info.fallback : text;
+  const hasAssignee = Boolean(event.data?.assignedTo || event.data?.assignedToContact);
+  // A task with nobody on it (chats that get all tasks) gets the event's own wording.
+  const template = info?.unassigned && !hasAssignee ? info.unassigned : templateFor(connection, kind);
+  return render(template, event, settings, connection.platform, previous, kind);
 }
 
 // What is sent to the chat: {text} or, for new / newly assigned / finished tasks in Google Chat,
@@ -230,14 +231,9 @@ export function buildPayload(event, connection, settings = {}, previous = null) 
   if (text === null) return null;
   const kind = eventKind(event, settings, previous);
   if (!EVENTS.find((e) => e.key === kind)?.card) return { text };
-  const card = { header: text, ...cardFor(event, settings, connection.platform, previous, kind) };
-  // Only a real @mention (the person's chat id is on file) goes above the card: it's what notifies them.
-  const extras = extrasFor(event, settings, connection.platform, previous, kind);
-  const mention = extras.assignee.startsWith("<") ? extras.assignee : "";
-  if (connection.platform === "google-chat") {
-    return mention ? { text: mention, cardsV2: [taskCard(card)] } : { cardsV2: [taskCard(card)] };
-  }
-  return { text: [mention, cardAsText(card)].filter(Boolean).join("\n") };
+  const card = cardFor(event, settings, connection.platform, previous, kind);
+  if (connection.platform === "google-chat") return { text, cardsV2: [taskCard(card)] };
+  return { text: [text, cardAsText(card)].filter(Boolean).join("\n") };
 }
 
 // A task card's context line, title, description and link.

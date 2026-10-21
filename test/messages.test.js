@@ -7,35 +7,39 @@ import { created, withStatus, GCHAT_URL } from "./helpers.js";
 const ALL_ALERTS = { created: true, assigned: true, completed: true, changes: true, messages: true };
 const gchat = { platform: "google-chat", chatUrl: GCHAT_URL, templates: defaultTemplates(), alerts: ALL_ALERTS };
 const withLink = { taskUrl: DEFAULT_TASK_URL };
+const block = (payload) => payload.cardsV2[0].card.sections[0].widgets[0].decoratedText;
 const update = (data) => ({ ...created, type: "task.updated", data: { ...created.data, ...data } });
 
-test("a new task is a card: who it's for, context, the task, and an Open the task button", () => {
+test("a new task is a sentence about the person, then one compact block with the task and an Open button", () => {
   const event = { ...created, data: { ...created.data, endDate: "2026-10-30", priority: 4, manager: { name: "Laura E." }, description: "Book the booth\nand send the attendee list" } };
   const payload = buildPayload(event, gchat, withLink);
-  assert.equal(payload.text, undefined); // no chat id on file, so nothing to @mention
+  assert.equal(payload.text, "*Tania Aquirre* has a new task · from Laura");
   assert.deepEqual(payload.cardsV2[0].card, {
-    header: { title: "Tania has a new task", subtitle: "from Laura · Conferences · Due Fri, Oct 30 · 🔺 High priority" },
     sections: [{ widgets: [
-      { textParagraph: { text: "<b>Book the booth</b><br><i>“Book the booth and send the attendee list”</i>" } },
-      { buttonList: { buttons: [{ text: "Open the task", onClick: { openLink: { url: "https://dashboard.zinspector.com/task/view/2160012" } } }] } },
+      { decoratedText: {
+        text: "<b>Book the booth</b>", wrapText: true, topLabel: "Conferences", bottomLabel: "Due Fri, Oct 30 · 🔺 High priority",
+        button: { text: "Open", onClick: { openLink: { url: "https://dashboard.zinspector.com/task/view/2160012" } } },
+      } },
+      { textParagraph: { text: "<i>“Book the booth and send the attendee list”</i>" } },
     ] }],
   });
 });
 
-test("Slack gets the same note as text", () => {
+test("Slack gets the same message as text", () => {
   const payload = buildPayload(created, { ...gchat, platform: "slack" }, withLink);
   assert.equal(payload.cardsV2, undefined);
-  assert.equal(payload.text, "*Tania has a new task*\n<https://dashboard.zinspector.com/task/view/2160012|test task>\nConferences");
+  assert.equal(payload.text, "*Tania Aquirre* has a new task\n*<https://dashboard.zinspector.com/task/view/2160012|test task>*\nConferences");
 });
 
 test("a new task with nobody on it (for chats that get all tasks) still reads well, without normal priority or missing dates", () => {
-  const { card } = buildPayload({ ...created, data: { ...created.data, assignedTo: null } }, { ...gchat, only: "all" }).cardsV2[0];
-  assert.deepEqual(card.header, { title: "New task", subtitle: "Conferences" });
+  const payload = buildPayload({ ...created, data: { ...created.data, assignedTo: null, manager: { name: "Laura E." } } }, { ...gchat, only: "all" });
+  assert.equal(payload.text, "New task · from Laura");
+  assert.equal(block(payload).bottomLabel, undefined);
 });
 
 test("names a vendor when the task is assigned to a contact", () => {
   const event = { ...created, data: { ...created.data, assignedTo: null, assignedToContact: { name: "Acme Painting" } } };
-  assert.equal(buildMessage(event, gchat), "Acme has a new task");
+  assert.equal(buildMessage(event, gchat), "*Acme Painting* has a new task");
 });
 
 test("an update lists only what changed", () => {
@@ -109,8 +113,8 @@ test("doesn't mistake built-in object names for fields", () => {
 test("mentions in the chat app's own syntax, matching emails with or without a +tag", () => {
   const settings = { people: [{ email: "Tania@zInspector.com", googleChatId: "1234", slackId: "U99" }] };
   const tagged = { ...created, data: { ...created.data, assignedTo: { name: "T", email: "tania+onsight@zinspector.com" } } };
-  assert.equal(buildPayload(tagged, gchat, settings).text, "<users/1234>");
-  assert.match(buildPayload(tagged, { ...gchat, platform: "slack" }, settings).text, /^<@U99>\n/);
+  assert.equal(buildPayload(tagged, gchat, settings).text, "<users/1234> has a new task");
+  assert.match(buildPayload(tagged, { ...gchat, platform: "slack" }, settings).text, /^<@U99> has a new task\n/);
 });
 
 test("lists an event's fields for the template helper", () => {
@@ -131,10 +135,10 @@ test("Google Chat groups a task's messages in one thread and keeps the URL's key
 test("a long title is cut on the card, the full description is quoted, and link-breaking characters are dropped", () => {
   const description = "Sponsor Opportunities! 2027 CALNARPM Conference <Anchored in Excellence> | booth, panel and dinner options for next year";
   const event = { ...created, data: { ...created.data, description } };
-  const { card } = buildPayload(event, gchat, withLink).cardsV2[0];
-  const [bold, quote] = card.sections[0].widgets[0].textParagraph.text.split("<br>");
+  const { widgets } = buildPayload(event, gchat, withLink).cardsV2[0].card.sections[0];
+  const bold = widgets[0].decoratedText.text;
   assert.ok(bold.endsWith("…</b>") && !bold.includes("<Anchored"), bold);
-  assert.equal(quote, `<i>“${description.replace("<", "&lt;").replace(">", "&gt;")}”</i>`);
+  assert.equal(widgets[1].textParagraph.text, `<i>“${description.replace("<", "&lt;").replace(">", "&gt;")}”</i>`);
   const update = { ...event, type: "task.updated", data: { ...event.data, status: { value: "In Progress" } } };
   const label = buildMessage(update, gchat, withLink, snapshotOf(event.data)).match(/\|(.+)>/)[1];
   assert.ok(!/[<>|]/.test(label), label);
@@ -143,12 +147,13 @@ test("a long title is cut on the card, the full description is quoted, and link-
 test("a finished task's card says how it ended", () => {
   const before = snapshotOf({ ...created.data, status: { value: "In Progress" } });
   const payload = buildPayload(withStatus("Work Complete"), gchat, {}, before);
-  assert.deepEqual(payload.cardsV2[0].card.header, { title: "Tania finished a task ✅", subtitle: "Work Complete · Conferences" });
+  const settings = { people: [{ email: "tania@zinspector.com", googleChatId: "1234" }] };
+  assert.equal(buildPayload(withStatus("Work Complete"), gchat, settings, before).text, "🎉 Tania finished a task!"); // no ping for finishing
+  assert.equal(block(payload).bottomLabel, "Work Complete");
 });
 
 test("a task given to someone is a newly assigned alert", () => {
   const event = update({ assignedTo: { name: "Tim Wallace" }, manager: { name: "Laura E." } });
   assert.equal(eventKind(event, {}, snapshotOf(created.data)), "task.assigned");
-  const { header } = buildPayload(event, gchat, {}, snapshotOf(created.data)).cardsV2[0].card;
-  assert.deepEqual(header, { title: "Tim was assigned a task", subtitle: "from Laura · Conferences" });
+  assert.equal(buildPayload(event, gchat, {}, snapshotOf(created.data)).text, "*Tim Wallace* was assigned a task · from Laura");
 });
