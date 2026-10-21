@@ -26,9 +26,9 @@ export const EVENTS = [
     label: "Task created",
     template: [
       "🆕 *New task* · {{taskTitle}} · Ref {{data.referenceNumber}}",
-      "🏠 {{data.propertyName}} · {{data.propertyAddress}}",
+      "🏠 {{data.propertyName}} · 📋 {{taskType}}",
       "👤 {{assigneeOrUnassigned}} · 📅 Due {{dueDate}} · {{priorityFlag}}",
-      "> {{shortDescription}}",
+      "> {{descriptionMore}}",
     ].join("\n"),
   },
   {

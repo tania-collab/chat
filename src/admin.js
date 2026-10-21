@@ -132,7 +132,7 @@ export const ADMIN_HTML = String.raw`<!doctype html>
     <div class="checks" id="f-alerts"></div>
     <h2 style="margin:24px 0 4px">Messages</h2>
     <div class="hint">{{field}} puts in a value from the event. A line, or a part of a line between " · ", is left out when one of its fields is empty.
-      Ready-made: {{taskTitle}} (the task, linked), {{assignee}} (@mentioned on new tasks, new assignments and completions),
+      Ready-made: {{taskTitle}} (the task's title, linked), {{taskType}}, {{assignee}} (@mentioned on new tasks, new assignments and completions),
       {{changes}} (what an update changed), {{dueDate}}, {{priorityFlag}} (only when not normal), {{shortDescription}},
       {{messageText}} and {{messageAuthor}}. Formatting: *bold*, _italic_, &lt;link|text&gt;.</div>
     <label for="f-event">Event</label>

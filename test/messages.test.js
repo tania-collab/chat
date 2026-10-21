@@ -9,15 +9,14 @@ const gchat = { platform: "google-chat", chatUrl: GCHAT_URL, templates: defaultT
 const withLink = { taskUrl: DEFAULT_TASK_URL };
 const update = (data) => ({ ...created, type: "task.updated", data: { ...created.data, ...data } });
 
-test("a new task fits in a few lines, with the task name as its link", () => {
+test("a new task fits in a few lines, with its title (the description) as the link", () => {
   const event = { ...created, data: { ...created.data, endDate: "2026-10-30", priority: 4 } };
   assert.equal(
     buildMessage(event, gchat, withLink),
     [
-      "🆕 *New task* · <https://dashboard.zinspector.com/task/view/2160012|Marketing Required> · Ref 313307",
-      "🏠 Marketing.Conferences · 123 Jones, Davis, CA 95616, US",
+      "🆕 *New task* · <https://dashboard.zinspector.com/task/view/2160012|test task> · Ref 313307",
+      "🏠 Marketing.Conferences · 📋 Marketing",
       "👤 *Tania Aquirre* · 📅 Due Oct 30 · 🔺 High priority",
-      "> test task",
     ].join("\n"),
   );
 });
@@ -45,7 +44,7 @@ test("an update lists only what changed", () => {
   assert.equal(
     buildMessage(event, gchat, settings, before),
     [
-      "✏️ *Marketing Required* · Ref 313307",
+      "✏️ *test task* · Ref 313307",
       "• Status: New → *In Progress*",
       "• Assigned: Tania Aquirre → <users/110410588780324983531>",
       "• Due: *Nov 2*",
@@ -80,7 +79,7 @@ test("a new message shows its author and the first lines, without signature or H
   };
   assert.equal(
     buildMessage(event, gchat),
-    "💬 *New message* · *Marketing Required* · Ref 313307\n> If this shows up as a task, we're ready.\n— Greg Owen",
+    "💬 *New message* · *test task* · Ref 313307\n> If this shows up as a task, we're ready.\n— Greg Owen",
   );
   const html = { type: "task.message.created", data: { comment: "<div>Hello <b>there</b>&nbsp;team</div><div>On Mon, Oct 20 Ann wrote:</div>" } };
   assert.match(buildMessage(html, { ...gchat, only: "all" }), /> Hello there team$/m);
@@ -123,4 +122,14 @@ test("Google Chat groups a task's messages in one thread and keeps the URL's key
   assert.equal(deliveryUrl(gchat, { type: "zdata.changed", data: { id: 5 } }), GCHAT_URL);
   const slack = "https://hooks.slack.com/services/X";
   assert.equal(deliveryUrl({ platform: "slack", chatUrl: slack }, created), slack);
+});
+
+test("a long title is cut, the rest of the description is quoted, and link-breaking characters are dropped", () => {
+  const description = "Sponsor Opportunities! 2027 CALNARPM Conference <Anchored in Excellence> | booth, panel and dinner options for next year";
+  const text = buildMessage({ ...created, data: { ...created.data, description } }, gchat, withLink);
+  const [first, , , quote] = text.split("\n");
+  const label = first.match(/\|(.+)> · Ref/)[1];
+  assert.ok(label.startsWith("Sponsor Opportunities! 2027 CALNARPM Conference Anchored in Excellence"), label);
+  assert.ok(label.endsWith("…") && label.length <= 91 && !/[<>|]/.test(label), label);
+  assert.equal(quote, `> ${description}`);
 });

@@ -11,7 +11,7 @@ Each event has its own message, short because a task's messages share one Google
 
 | zInspector event | Default message |
 |---|---|
-| Task created | 🆕 *New task* · task name (linked) · Ref; property; assignee (or _Unassigned_), due date, priority if not normal; description |
+| Task created | 🆕 *New task* · title (the task's description, linked) · Ref; property and type; assignee, due date, priority if not normal; the rest of a long description |
 | Task updated | ✏️ task · Ref, then only what changed: `Status: New → In Progress`, `Assigned: AJ → @Tim`, `Due: Nov 2`… Updates that change nothing visible aren't posted. |
 | Task updated into a "done" status | ✅ *Work Complete* · task · Ref; 🎉 Nice work, @assignee! (once per task) |
 | New task message | 💬 *New message* · task · Ref; the first lines of the message, without signature; its author |
@@ -39,7 +39,7 @@ Messages still on an earlier default switch to the current one; edited messages 
 
 - `{{data.propertyName}}` puts in a value from the event; `{{data.status}}` shows a status's name, `{{data.assignedTo}}`
   a person's name.
-- Ready-made values: `{{taskTitle}}` (the task, linked), `{{assignee}}`, `{{assigneeOrUnassigned}}`, `{{changes}}`,
+- Ready-made values: `{{taskTitle}}` (the task's title, i.e. its description, linked), `{{taskType}}`, `{{descriptionMore}}`, `{{assignee}}`, `{{assigneeOrUnassigned}}`, `{{changes}}`,
   `{{dueDate}}`, `{{priorityFlag}}`, `{{shortDescription}}`, `{{messageText}}`, `{{messageAuthor}}`, `{{taskLink}}`.
 - A line, or a part of a line between ` · `, is left out when one of its fields is empty.
 - Formatting: `*bold*`, `_italic_`, `<https://link|text>`.
