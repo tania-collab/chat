@@ -3,6 +3,7 @@
 import { PLATFORMS, DEFAULT_COMPLETED, DEFAULT_TASK_URL, EVENTS, MAX_TEMPLATE } from "./messages.js";
 
 const LOG_SIZE = 20;
+const MAX_PEOPLE = 5000;
 
 export async function getConnections(kv) {
   return (await kv.get("connections", "json")) || [];
@@ -82,11 +83,14 @@ export function cleanSettings(input) {
       slackId: String(p.slackId || "").trim(),
     }))
     .filter((p) => p.email);
+  // One row per email (the last one wins), so a pasted list can't create duplicates.
+  const byEmail = [...new Map(people.map((p) => [p.email, p])).values()];
+  if (byEmail.length > MAX_PEOPLE) return { error: `The people list can hold up to ${MAX_PEOPLE} people.` };
   return {
     value: {
       taskUrl,
       completedStatuses: String(input.completedStatuses || "").trim() || DEFAULT_COMPLETED,
-      people,
+      people: byEmail,
     },
   };
 }

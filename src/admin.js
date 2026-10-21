@@ -92,6 +92,7 @@ export const ADMIN_HTML = String.raw`<!doctype html>
     </table></div>
     <div class="row" style="margin-top:8px">
       <button type="button" id="addPerson">Add person</button>
+      <button type="button" id="pastePeople">Paste a list</button>
       <span class="grow"></span>
       <button class="primary" type="submit">Save settings</button>
     </div>
@@ -146,6 +147,48 @@ export const ADMIN_HTML = String.raw`<!doctype html>
     <div class="row" style="margin-top:16px; justify-content:flex-end">
       <button type="button" id="cancel">Cancel</button>
       <button class="primary" type="submit">Save</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="bulk">
+  <form id="bulkForm" method="dialog">
+    <h2 style="margin-top:0">Paste a list of people</h2>
+    <div class="hint">One person per line: their email and their id, separated by a comma or a tab (straight from a spreadsheet works).
+      Column order and header lines don't matter. People already in the list are updated; new ones are added.</div>
+    <label for="bulkPlatform">These ids are for</label>
+    <select id="bulkPlatform">
+      <option value="google-chat">Google Chat (long numbers)</option>
+      <option value="slack">Slack (member ids like U01ABCDEF)</option>
+    </select>
+    <label for="bulkText">List</label>
+    <textarea id="bulkText" spellcheck="false" placeholder="maria@zinspector.com,112233445566778899001&#10;sam@zinspector.com,998877665544332211001"></textarea>
+    <details style="margin-top:12px">
+      <summary><b>Get everyone's Google Chat id at once</b> (needs a Google Workspace admin)</summary>
+      <ol class="steps" style="margin-top:8px">
+        <li>Go to <b>script.google.com</b> → <b>New project</b>.</li>
+        <li>On the left, next to <b>Services</b>, click <b>+</b>, pick <b>Admin SDK API</b>, then <b>Add</b>.</li>
+        <li>Replace everything in the editor with the script below (<b>Copy script</b>), then click <b>Run</b>. Allow access when Google asks.</li>
+        <li>Copy the lines from the <b>Execution log</b> into the list above.</li>
+      </ol>
+      <textarea id="bulkScript" readonly spellcheck="false" style="min-height:220px">// Lists every user's email and Google Chat user id, ready to paste into zInspector → Chat.
+function listGoogleChatIds() {
+  var rows = [];
+  var pageToken;
+  do {
+    var page = AdminDirectory.Users.list({ customer: "my_customer", maxResults: 500, orderBy: "email", pageToken: pageToken });
+    (page.users || []).forEach(function (u) { rows.push(u.primaryEmail + "," + u.id); });
+    pageToken = page.nextPageToken;
+  } while (pageToken);
+  console.log(rows.join("\n"));
+  console.log(rows.length + " people. Copy the lines above into Paste a list.");
+}</textarea>
+      <button type="button" id="copyScript" style="margin-top:6px">Copy script</button>
+    </details>
+    <div class="msg" id="bulkMsg"></div>
+    <div class="row" style="margin-top:16px; justify-content:flex-end">
+      <button type="button" id="bulkCancel">Cancel</button>
+      <button class="primary" type="submit">Add to list and save</button>
     </div>
   </form>
 </dialog>
@@ -373,6 +416,56 @@ function addPersonRow(p) {
 }
 
 $("addPerson").addEventListener("click", function () { addPersonRow(); });
+
+// Bulk paste: each line holds an email and an id, in any order, split by commas, tabs or semicolons.
+var ID_PATTERN = { "google-chat": /^(users\/)?\d{5,}$/, slack: /^[UW][A-Z0-9]{6,}$/ };
+function parseList(text, platform) {
+  var found = [], skipped = 0;
+  text.split(/\r?\n/).forEach(function (line) {
+    if (!line.trim()) return;
+    var cells = line.split(/[,;\t]/).map(function (c) { return c.trim().replace(/^"|"$/g, ""); });
+    var email = cells.filter(function (c) { return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(c); })[0];
+    var id = cells.filter(function (c) { return ID_PATTERN[platform].test(c); })[0];
+    if (email && id) found.push({ email: email.toLowerCase(), id: id.replace(/^users\//, "") });
+    else skipped++;
+  });
+  return { found: found, skipped: skipped };
+}
+
+$("pastePeople").addEventListener("click", function () {
+  $("bulkText").value = ""; $("bulkMsg").textContent = ""; $("bulk").showModal();
+});
+$("bulkCancel").addEventListener("click", function () { $("bulk").close(); });
+$("copyScript").addEventListener("click", function (ev) {
+  navigator.clipboard.writeText($("bulkScript").value).then(function () { ev.target.textContent = "Copied"; },
+    function () { $("bulkScript").select(); });
+});
+$("bulkForm").addEventListener("submit", function (ev) {
+  ev.preventDefault();
+  var platform = $("bulkPlatform").value;
+  var result = parseList($("bulkText").value, platform);
+  if (!result.found.length) {
+    $("bulkMsg").className = "msg bad";
+    $("bulkMsg").textContent = "No lines with both an email and an id were found.";
+    return;
+  }
+  var field = platform === "slack" ? ".p-slack" : ".p-gchat";
+  var rows = {};
+  Array.prototype.forEach.call($("people").children, function (row) {
+    rows[row.querySelector(".p-email").value.trim().toLowerCase()] = row;
+  });
+  var added = 0, updated = 0;
+  result.found.forEach(function (p) {
+    if (!rows[p.email]) { addPersonRow({ email: p.email }); rows[p.email] = $("people").lastChild; added++; }
+    else updated++;
+    rows[p.email].querySelector(field).value = p.id;
+  });
+  $("bulk").close();
+  $("settings").requestSubmit();
+  $("settingsMsg").className = "msg ok";
+  $("settingsMsg").textContent = "Added " + added + ", updated " + updated +
+    (result.skipped ? ", skipped " + result.skipped + " line(s) without an email and id" : "") + ". Saving…";
+});
 $("settings").addEventListener("submit", function (ev) {
   ev.preventDefault();
   var people = Array.prototype.map.call($("people").children, function (row) {
