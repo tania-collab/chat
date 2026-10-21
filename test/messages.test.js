@@ -3,6 +3,10 @@ import assert from "node:assert/strict";
 import { buildMessage, buildPayload, render, eventKind, deliveryUrl, fieldPaths, defaultTemplates, DEFAULT_TASK_URL } from "../src/messages.js";
 import { snapshotOf } from "../src/taskview.js";
 import { created, withStatus, GCHAT_URL } from "./helpers.js";
+import { localDate } from "../src/time.js";
+
+// A date N days from today (Pacific), so date wording is tested the same way any day.
+const inDays = (n) => new Date(Date.parse(localDate()) + n * 86400000).toISOString().slice(0, 10);
 
 const ALL_ALERTS = { created: true, assigned: true, completed: true, changes: true, messages: true };
 const gchat = { platform: "google-chat", chatUrl: GCHAT_URL, templates: defaultTemplates(), alerts: ALL_ALERTS };
@@ -11,13 +15,13 @@ const block = (payload) => payload.cardsV2[0].card.sections[0].widgets[0].decora
 const update = (data) => ({ ...created, type: "task.updated", data: { ...created.data, ...data } });
 
 test("a new task is a sentence about the person, then one compact block with the task and an Open button", () => {
-  const event = { ...created, data: { ...created.data, endDate: "2026-10-30", priority: 4, manager: { name: "Laura E." }, description: "Book the booth\nand send the attendee list" } };
+  const event = { ...created, data: { ...created.data, endDate: inDays(2), priority: 4, manager: { name: "Laura E." }, description: "Book the booth\nand send the attendee list" } };
   const payload = buildPayload(event, gchat, withLink);
   assert.equal(payload.text, "*Tania Aquirre* has a new task · from Laura");
   assert.deepEqual(payload.cardsV2[0].card, {
     sections: [{ widgets: [
       { decoratedText: {
-        text: "<b>Book the booth</b>", wrapText: true, topLabel: "Conferences", bottomLabel: "Due Fri, Oct 30 · 🔺 High priority",
+        text: "<b>Book the booth</b>", wrapText: true, topLabel: "Conferences", bottomLabel: "Due in 2 days · 🔺 High priority",
         button: { text: "Open", onClick: { openLink: { url: "https://dashboard.zinspector.com/task/view/2160012" } } },
       } },
       { textParagraph: { text: "<i>“Book the booth and send the attendee list”</i>" } },
@@ -149,11 +153,38 @@ test("a finished task's card says how it ended", () => {
   const payload = buildPayload(withStatus("Work Complete"), gchat, {}, before);
   const settings = { people: [{ email: "tania@zinspector.com", googleChatId: "1234" }] };
   assert.equal(buildPayload(withStatus("Work Complete"), gchat, settings, before).text, "🎉 Tania finished a task!"); // no ping for finishing
-  assert.equal(block(payload).bottomLabel, "Work Complete");
+  assert.equal(block(payload).bottomLabel, "Done");
 });
 
 test("a task given to someone is a newly assigned alert", () => {
   const event = update({ assignedTo: { name: "Tim Wallace" }, manager: { name: "Laura E." } });
   assert.equal(eventKind(event, {}, snapshotOf(created.data)), "task.assigned");
   assert.equal(buildPayload(event, gchat, {}, snapshotOf(created.data)).text, "*Tim Wallace* was assigned a task · from Laura");
+});
+
+test("says when a task is due in words, and flags overdue ones", () => {
+  const due = (n) => block(buildPayload({ ...created, data: { ...created.data, endDate: n === null ? null : inDays(n) } }, gchat)).bottomLabel;
+  assert.equal(due(0), "Due today");
+  assert.equal(due(1), "Due tomorrow");
+  assert.equal(due(5), "Due in 5 days");
+  assert.equal(due(-1), "⚠️ Overdue by 1 day");
+  assert.equal(due(-3), "⚠️ Overdue by 3 days");
+  assert.match(due(10), /^Due [A-Z][a-z]{2} \d+/);
+  assert.equal(due(null), undefined);
+});
+
+test("a finished task says whether it was early, on time or late", () => {
+  const done = (n, status = "Work Complete") => {
+    const data = { ...created.data, endDate: inDays(n) };
+    const before = snapshotOf({ ...data, status: { value: "In Progress" } });
+    return block(buildPayload({ ...created, type: "task.updated", data: { ...data, status: { value: status } } }, gchat, {}, before)).bottomLabel;
+  };
+  assert.equal(done(2), "Done · 2 days early");
+  assert.equal(done(0), "Done · on time");
+  assert.equal(done(-1, "Closed"), "Closed · 1 day late");
+});
+
+test("doesn't say who a task is from when they gave it to themselves", () => {
+  const self = { ...created, data: { ...created.data, manager: { name: "Tania Aquirre", email: "tania+onsight@zinspector.com" } } };
+  assert.equal(buildMessage(self, gchat), "*Tania Aquirre* has a new task");
 });

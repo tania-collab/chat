@@ -2,8 +2,7 @@
 // due this week, and last week's new / finished counts. Built from the tasks the app has seen.
 
 import { DEFAULT_AUDIENCE, DEFAULT_COMPLETED, matchesAudience, mentionFor, taskUrl } from "./messages.js";
-
-export const TIME_ZONE = "America/Los_Angeles";
+import { TIME_ZONE, localDate } from "./time.js";
 export const DIGEST_DAY = "Mon";
 export const DIGEST_HOUR = 8;
 const DASHBOARD = "https://dashboard.zinspector.com/";
@@ -50,7 +49,9 @@ export function buildDigest(connection, activity, settings = {}, now = new Date(
       lines: p.tasks.slice(0, TASKS_PER_PERSON).map((t) => ({ title: titleOf(t), link: taskUrl(t.id, settings.taskUrl), note: t.note })),
       more: Math.max(0, p.tasks.length - TASKS_PER_PERSON),
     })),
-    pulse: `Last week: ${created} new · ${finished} finished${finished ? " 🎉" : ""}`,
+    pulse: [`Last week: ${created} new · ${finished} finished${finished ? " 🎉" : ""}`, open.length && !overdue ? "Nothing overdue 👏" : ""]
+      .filter(Boolean)
+      .join("<br>"),
   };
 
   // @mention only the people with something overdue, and only those whose chat id is on file.
@@ -73,7 +74,7 @@ function digestCard(d) {
   }));
   sections.push({
     widgets: [
-      { textParagraph: { text: escapeHtml(d.pulse) } },
+      { textParagraph: { text: d.pulse.split("<br>").map(escapeHtml).join("<br>") } },
       { buttonList: { buttons: [{ text: "Open zInspector", onClick: { openLink: { url: DASHBOARD } } }] } },
     ],
   });
@@ -86,7 +87,7 @@ function digestText(d) {
     ...p.lines.map((l) => `• ${l.link ? `<${l.link}|${l.title}>` : l.title}${l.note ? ` · ${l.note}` : ""}`),
     ...(p.more ? [`and ${p.more} more`] : []),
   ]);
-  return [`*${d.header}*`, d.subtitle, "", ...people, "", d.pulse, `<${DASHBOARD}|Open zInspector>`].join("\n");
+  return [`*${d.header}*`, d.subtitle, "", ...people, "", ...d.pulse.split("<br>"), `<${DASHBOARD}|Open zInspector>`].join("\n");
 }
 
 function lineHtml(l) {
@@ -136,10 +137,6 @@ function mondayOf(ymd) {
   return new Date(d.getTime() - ((d.getUTCDay() + 6) % 7) * DAY_MS).toISOString().slice(0, 10);
 }
 
-// Today's date (YYYY-MM-DD) in Pacific time.
-function localDate(now) {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: TIME_ZONE }).format(now);
-}
 
 function titleOf(t) {
   const first = String(t.description || "").split("\n")[0].trim();

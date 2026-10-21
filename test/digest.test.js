@@ -72,7 +72,7 @@ test("the app tracks tasks from webhooks, and Send digest now posts the card", a
     assert.equal(res.ok, true);
     const card = calls.at(-1).body.cardsV2[0].card;
     assert.equal(card.header.subtitle, "1 open");
-    assert.equal(card.sections.at(-1).widgets[0].textParagraph.text, "Last week: 2 new · 1 finished 🎉");
+    assert.equal(card.sections.at(-1).widgets[0].textParagraph.text, "Last week: 2 new · 1 finished 🎉<br>Nothing overdue 👏");
   });
 });
 
