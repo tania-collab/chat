@@ -98,17 +98,19 @@ rather than opening up.
 |---|---|
 | Task link | The "Open in zInspector" link in task messages, `https://dashboard.zinspector.com/task/view/{id}` by default; `{id}` becomes each task's number. |
 | "Done" statuses | A Task updated to one of these posts the Task completed message (default `Work Complete,Closed`; Canceled and Deferred don't). |
-| People | zInspector email → Google Chat user id and/or Slack member id, for real @mentions. Without an id the name shows in bold. Google Chat needs the numeric id (Admin console or Directory API), not the email. |
+| People | email → Google Chat user id and/or Slack member id, for real @mentions. Without an id the name shows in bold. Google Chat needs the numeric id (from Google Contacts, below), not the email. |
 
-### Adding many people at once
+### Finding Google Chat ids, and adding many people at once
 
-Under **People**, click **Paste a list** and paste one person per line: their email and their id, separated by a
-comma or a tab (copying two columns from a spreadsheet works). Column order and header lines don't matter;
-people already in the list are updated.
+A person's Google Chat user id is the long number at the end of their Google Contacts address:
+**contacts.google.com** → **Directory** → click the person → `https://contacts.google.com/person/102245061761548994358`.
 
-To get everyone's Google Chat id in one go (needs a Google Workspace admin), the same dialog has a short
-Google Apps Script: script.google.com → **New project** → **Services +** → **Admin SDK API** → paste the
-script → **Run** → copy the lines from the **Execution log** into **Paste a list**.
+Under **People**, click **Paste a list** and paste one person per line: a name or email and the id or that
+Contacts link, in any order, separated by spaces, commas or tabs. A name becomes `name@zinspector.com` (the
+domain is editable). People already in the list are updated.
+
+zInspector accounts may tag staff emails (`aj+onsight@zinspector.com`); `aj@zinspector.com` in People matches
+them in every account.
 
 ## Good to know
 

@@ -216,11 +216,16 @@ function valueText(v) {
 
 function mentionFor(person, people = [], platform) {
   if (!person) return null;
-  const email = person.email?.toLowerCase();
-  const match = email && people.find((p) => p.email?.toLowerCase() === email);
+  const email = baseEmail(person.email);
+  const match = email && people.find((p) => baseEmail(p.email) === email);
   if (platform === "google-chat" && match?.googleChatId) return `<users/${match.googleChatId}>`;
   if (platform === "slack" && match?.slackId) return `<@${match.slackId}>`;
   return person.name ? `*${person.name}*` : null;
+}
+
+// zInspector accounts often tag staff emails (aj+onsight@zinspector.com): match them to aj@zinspector.com.
+function baseEmail(email) {
+  return email ? String(email).toLowerCase().replace(/\+[^@]*(?=@)/, "") : "";
 }
 
 function taskUrl(id, template) {
