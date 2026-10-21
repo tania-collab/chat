@@ -33,7 +33,7 @@ export async function deleteActivity(kv, id) {
 }
 
 // Validate what the page sends. Returns {value} or {error}.
-export function cleanConnection(input, existing = {}) {
+export function cleanConnection(input, existing = {}, by = null) {
   const name = String(input.name || "").trim();
   const platform = String(input.platform || "");
   const chatUrl = String(input.chatUrl || "").trim();
@@ -52,6 +52,8 @@ export function cleanConnection(input, existing = {}) {
     value: {
       id: existing.id || newId(),
       createdAt: existing.createdAt || new Date().toISOString(),
+      createdBy: existing.id ? existing.createdBy || null : by,
+      updatedBy: by,
       name,
       platform,
       chatUrl,

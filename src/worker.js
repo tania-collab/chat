@@ -1,10 +1,11 @@
 // zInspector -> chat relay: a Cloudflare Worker with an admin page.
 //
 //   POST /hook/<connection id>   zInspector webhook target (public, checks the connection's token)
-//   GET  /                       admin page   (password: the ADMIN_PASSWORD secret)
+//   GET  /                       admin page
 //   /api/...                     admin JSON API used by the page
 //
-// Bindings: KV namespace RELAY, secret ADMIN_PASSWORD.
+// Sign-in: Cloudflare Access (ACCESS_TEAM_DOMAIN + ACCESS_AUD) when set, else the ADMIN_PASSWORD secret.
+// Bindings: KV namespace RELAY.
 
 import { buildMessage, eventKind, deliveryUrl, render, fieldPaths, EVENTS, EXAMPLES, TEST_MESSAGE } from "./messages.js";
 import {
@@ -18,16 +19,21 @@ import {
   cleanSettings,
 } from "./store.js";
 import { ADMIN_HTML } from "./admin.js";
+import { accessConfigured, accessEmail } from "./access.js";
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     try {
       if (url.pathname.startsWith("/hook/")) return await relay(request, env, url.pathname.slice(6));
-      if (!env.RELAY || !env.ADMIN_PASSWORD) {
-        return text("Setup is not finished: add the RELAY KV binding and the ADMIN_PASSWORD secret.", 503);
+      if (!env.RELAY || (!accessConfigured(env) && !env.ADMIN_PASSWORD)) {
+        return text("Setup is not finished: add the RELAY KV binding, and Cloudflare Access or the ADMIN_PASSWORD secret.", 503);
       }
-      if (!isAdmin(request, env)) {
+      const user = await signedInUser(request, env);
+      if (!user && accessConfigured(env)) {
+        return text("Sign in through Cloudflare Access to use this app.", 403);
+      }
+      if (!user) {
         return new Response("Password required", {
           status: 401,
           headers: { "WWW-Authenticate": 'Basic realm="zInspector chat relay", charset="UTF-8"' },
@@ -40,7 +46,7 @@ export default {
         if (request.method !== "GET" && request.headers.get("origin") !== url.origin) {
           return json({ error: "Cross-site request refused" }, 403);
         }
-        return await api(request, env, url);
+        return await api(request, env, url, user);
       }
       return text("Not found", 404);
     } catch (err) {
@@ -98,7 +104,7 @@ function logEntry(kind, event, result) {
   };
 }
 
-async function api(request, env, url) {
+async function api(request, env, url, user) {
   const kv = env.RELAY;
   const parts = url.pathname.split("/").filter(Boolean); // ["api", ...]
   const method = request.method;
@@ -108,6 +114,7 @@ async function api(request, env, url) {
       connections: await getConnections(kv),
       settings: await getSettings(kv),
       hookBase: `${url.origin}/hook/`,
+      user: user.email,
       events: EVENTS,
     });
   }
@@ -140,7 +147,7 @@ async function api(request, env, url) {
   const id = parts[2];
 
   if (!id && method === "POST") {
-    const { value, error } = cleanConnection(await request.json());
+    const { value, error } = cleanConnection(await request.json(), {}, user.email);
     if (error) return json({ error }, 400);
     await saveConnections(kv, [...connections, value]);
     return json(value, 201);
@@ -150,7 +157,7 @@ async function api(request, env, url) {
   if (!existing) return json({ error: "Connection not found" }, 404);
 
   if (!parts[3] && method === "PUT") {
-    const { value, error } = cleanConnection(await request.json(), existing);
+    const { value, error } = cleanConnection(await request.json(), existing, user.email);
     if (error) return json({ error }, 400);
     await saveConnections(kv, connections.map((c) => (c.id === id ? value : c)));
     return json(value);
@@ -171,7 +178,16 @@ async function api(request, env, url) {
   return json({ error: "Not found" }, 404);
 }
 
-function isAdmin(request, env) {
+// The signed-in person ({email}), or null. With a password there's no email: {email: null}.
+async function signedInUser(request, env) {
+  if (accessConfigured(env)) {
+    const email = await accessEmail(request, env);
+    return email ? { email } : null;
+  }
+  return passwordOk(request, env) ? { email: null } : null;
+}
+
+function passwordOk(request, env) {
   const header = request.headers.get("authorization") || "";
   if (!header.startsWith("Basic ")) return false;
   let decoded;

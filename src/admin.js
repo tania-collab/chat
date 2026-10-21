@@ -67,7 +67,7 @@ export const ADMIN_HTML = String.raw`<!doctype html>
 </head>
 <body>
 <main>
-  <h1>zInspector → Chat</h1>
+  <div class="row"><h1 class="grow">zInspector → Chat</h1><span class="hint" id="who"></span></div>
   <p class="lead">Each connection turns one zInspector webhook into messages in one chat. zInspector decides which events it sends; here you set the chat and the wording.</p>
 
   <div class="row" style="margin-top:24px">
@@ -184,6 +184,7 @@ function call(method, path, body) {
 function load() {
   return call("GET", "/api/state").then(function (data) {
     state = data;
+    $("who").textContent = data.user ? "Signed in as " + data.user : "";
     renderConnections();
     renderSettings();
   }).catch(function (err) {
@@ -212,6 +213,8 @@ function connectionCard(c) {
       el("span", { "class": "name grow", text: c.name }),
       el("span", { "class": "chip on", text: PLATFORM[c.platform] || c.platform })
     ]),
+    c.createdBy ? el("div", { "class": "hint", text: "Added by " + c.createdBy +
+      (c.updatedBy && c.updatedBy !== c.createdBy ? " · last edited by " + c.updatedBy : "") }) : null,
     c.token ? null : el("div", { "class": "row", style: "margin-top:8px" }, [
       el("span", { "class": "chip", style: "color:var(--bad)", text: "No token: anyone with the address can post" })
     ]),
