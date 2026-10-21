@@ -171,6 +171,10 @@ export const ADMIN_HTML = String.raw`<!doctype html>
         <li>Replace everything in the editor with the script below (<b>Copy script</b>), then click <b>Run</b>. Allow access when Google asks.</li>
         <li>Copy the lines from the <b>Execution log</b> into the list above.</li>
       </ol>
+      <p class="hint" style="margin:8px 0">Blocked with "Access blocked: your institution's admin needs to review"? Use Google's API Explorer instead:
+        open <b>developers.google.com/admin-sdk/directory/reference/rest/v1/users/list</b>, and in <b>Try this method</b> set
+        <b>customer</b> to <code>my_customer</code>, <b>maxResults</b> to <code>500</code>, <b>fields</b> to <code>users(primaryEmail,id),nextPageToken</code>.
+        Click <b>Execute</b>, sign in, then copy the whole answer (it starts with <code>{</code>) into the list above.</p>
       <textarea id="bulkScript" readonly spellcheck="false" style="min-height:220px">// Lists every user's email and Google Chat user id, ready to paste into zInspector → Chat.
 function listGoogleChatIds() {
   var rows = [];
@@ -420,6 +424,8 @@ $("addPerson").addEventListener("click", function () { addPersonRow(); });
 // Bulk paste: each line holds an email and an id, in any order, split by commas, tabs or semicolons.
 var ID_PATTERN = { "google-chat": /^(users\/)?\d{5,}$/, slack: /^[UW][A-Z0-9]{6,}$/ };
 function parseList(text, platform) {
+  var fromJson = parseUsersJson(text);
+  if (fromJson) return { found: fromJson, skipped: 0 };
   var found = [], skipped = 0;
   text.split(/\r?\n/).forEach(function (line) {
     if (!line.trim()) return;
@@ -430,6 +436,16 @@ function parseList(text, platform) {
     else skipped++;
   });
   return { found: found, skipped: skipped };
+}
+
+// The Google Directory API's users.list answer (e.g. from its API Explorer): {"users": [{"primaryEmail", "id"}]}.
+function parseUsersJson(text) {
+  var data;
+  try { data = JSON.parse(text.trim()); } catch (e) { return null; }
+  var users = Array.isArray(data) ? data : (data && data.users);
+  if (!Array.isArray(users)) return null;
+  return users.filter(function (u) { return u && u.primaryEmail && /^\d{5,}$/.test(String(u.id)); })
+    .map(function (u) { return { email: String(u.primaryEmail).toLowerCase(), id: String(u.id) }; });
 }
 
 $("pastePeople").addEventListener("click", function () {
