@@ -7,18 +7,35 @@ has its own address that you paste as the **Destination URL** of a zInspector we
 which events it sends (events and filters are set on its Edit Webhook screen); the app checks the webhook
 token, writes the message for that event, and posts it to the connection's chat.
 
-Each event has its own message, short because a task's messages share one Google Chat thread:
+New, newly assigned and finished tasks arrive in Google Chat as a card, written like a short note:
 
-| zInspector event | Default message |
+```
+Tim has a new task                                   ← heading (editable per chat)
+from Laura · Conferences · Due Fri, Oct 30 · 🔺 High priority
+──────────────────────────────────────────
+Book the booth                                       ← the task's title (its description)
+"Book the booth and send the attendee list…"         ← the rest of a long description
+[ Open the task ]
+```
+
+When the assignee's Google Chat id is on file (People), they're @mentioned just above the card, which is what
+notifies them. Slack gets the same note as text. Other alerts are short text messages:
+
+| zInspector event | Message |
 |---|---|
-| Task created | 🆕 *New task* · title (the task's description, linked) · Ref; property and type; assignee, due date, priority if not normal; the rest of a long description |
-| Task updated | ✏️ task · Ref, then only what changed: `Status: New → In Progress`, `Assigned: AJ → @Tim`, `Due: Nov 2`… Updates that change nothing visible aren't posted. |
-| Task updated into a "done" status | ✅ *Work Complete* · task · Ref; 🎉 Nice work, @assignee! (once per task) |
-| New task message | 💬 *New message* · task · Ref; the first lines of the message, without signature; its author |
+| Task created | card: "Tim has a new task" |
+| Task updated that gives the task to someone | card: "Tim was assigned a task" |
+| Task updated into a "done" status | card: "Tim finished a task ✅", with how it ended (Work Complete / Closed) |
+| Other task updates (off by default) | ✏️ task · then only what changed: `Status: New → In Progress`, `Due: Nov 2`… |
+| New task message (off by default) | 💬 *New message* · task; the first lines of the message, without signature; its author |
 | Reports distributed | 📄 *Report sent* · property · Ref |
 | zData changed | 🗂️ *area › detail* action · property; the value |
 | any other event | 🔔 *event name* · property |
 | Send test | ✅ zInspector is connected to this chat. |
+
+Messages about one task share a Google Chat thread. To tell what changed, the app remembers the last state of
+the 300 most recently seen tasks per chat. Messages still on an earlier default switch to the current one;
+edited messages stay as written.
 
 **What a chat hears about** is set per chat:
 
@@ -39,7 +56,7 @@ Messages still on an earlier default switch to the current one; edited messages 
 
 - `{{data.propertyName}}` puts in a value from the event; `{{data.status}}` shows a status's name, `{{data.assignedTo}}`
   a person's name.
-- Ready-made values: `{{taskTitle}}` (the task's title, i.e. its description, linked), `{{taskType}}`, `{{descriptionMore}}`, `{{assignee}}`, `{{assigneeOrUnassigned}}`, `{{changes}}`,
+- Ready-made values: `{{assigneeFirstName}}`, `{{managerName}}`, `{{area}}`, `{{taskTitle}}` (the task's title, i.e. its description, linked), `{{taskType}}`, `{{descriptionMore}}`, `{{assignee}}`, `{{assigneeOrUnassigned}}`, `{{changes}}`,
   `{{dueDate}}`, `{{priorityFlag}}`, `{{shortDescription}}`, `{{messageText}}`, `{{messageAuthor}}`, `{{taskLink}}`.
 - A line, or a part of a line between ` · `, is left out when one of its fields is empty.
 - Formatting: `*bold*`, `_italic_`, `<https://link|text>`.
@@ -137,6 +154,7 @@ them in every account.
 | `src/worker.js` | routes: `/hook/<id>` relay, `/` admin page, `/api/...` |
 | `src/messages.js` | events, default copy, the template engine, @mentions, threads |
 | `src/taskview.js` | task state, what changed, ready-made values |
+| `src/cards.js` | the Google Chat card (and its Slack text version) |
 | `src/legacy.js` | earlier default copy, to move unedited messages forward |
 | `src/store.js` | connections, settings, logs and last events in KV, input checks |
 | `src/admin.js` | the admin page (HTML + JS) |

@@ -63,6 +63,10 @@ export function taskExtras({ event, previous, kind, link, mentionOf }) {
   return {
     taskTitle: link ? `<${link}|${linkText}>` : `*${title}*`,
     taskType: typeLabel,
+    plainTitle: title,
+    area: shortArea(data.propertyName),
+    managerName: firstName(text(data.manager)),
+    assigneeFirstName: firstName(now.assignee?.name),
     // The rest of the description, when the title above had to cut it short.
     descriptionMore: shorten(now.description, SHORT_TEXT) === title ? "" : shorten(now.description, SHORT_TEXT),
     taskLink: link || "",
@@ -70,7 +74,7 @@ export function taskExtras({ event, previous, kind, link, mentionOf }) {
     assigneeOrUnassigned: assignee || "_Unassigned_",
     changes: changes.join("\n"),
     previousStatus: previous?.status || "",
-    dueDate: formatDate(now.due),
+    dueDate: formatDue(now.due),
     priorityFlag: priorityFlag(now.priority),
     shortDescription: shorten(now.description, SHORT_TEXT),
     messageText: shorten(cleanMessage(messageBody(data)), SHORT_TEXT),
@@ -79,7 +83,7 @@ export function taskExtras({ event, previous, kind, link, mentionOf }) {
 }
 
 export const EXTRA_NAMES = [
-  "taskTitle", "taskType", "descriptionMore", "assignee", "assigneeOrUnassigned", "changes", "dueDate", "priorityFlag",
+  "taskTitle", "taskType", "descriptionMore", "managerName", "area", "assigneeFirstName", "assignee", "assigneeOrUnassigned", "changes", "dueDate", "priorityFlag",
   "shortDescription", "messageText", "messageAuthor", "previousStatus", "taskLink", "mention",
 ];
 
@@ -112,6 +116,25 @@ function formatDate(v) {
   if (!m) return "";
   const year = Number(m[1]) === new Date().getUTCFullYear() ? "" : `, ${m[1]}`;
   return `${MONTHS[Number(m[2]) - 1]} ${Number(m[3])}${year}`;
+}
+
+// "Fri, Oct 30", or "today".
+function formatDue(v) {
+  const m = String(v || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return "";
+  const day = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  if (day.toISOString().slice(0, 10) === new Date().toISOString().slice(0, 10)) return "today";
+  return `${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][day.getUTCDay()]}, ${formatDate(v)}`;
+}
+
+// "Marketing.BizDev.Company" → "BizDev / Company", "Marketing.01.Inbox" → "Inbox".
+function shortArea(property) {
+  const parts = String(property || "").split(".").filter((p) => p && !/^\d+$/.test(p));
+  return (parts.length > 1 ? parts.slice(1) : parts).join(" / ");
+}
+
+function firstName(name) {
+  return String(name || "").trim().split(/\s+/)[0] || "";
 }
 
 function messageBody(data) {

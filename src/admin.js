@@ -59,6 +59,12 @@ export const ADMIN_HTML = String.raw`<!doctype html>
   @media (max-width: 640px) { .split { grid-template-columns: 1fr; } }
   .preview { white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg); border: 1px solid var(--line);
              border-radius: 8px; padding: 8px 10px; min-height: 200px; font-size: 14px; }
+  .chatcard { border: 1px solid var(--line); border-radius: 12px; background: var(--card); overflow: hidden; }
+  .cc-head { padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  .cc-title { font-size: 15px; }
+  .cc-body { padding: 10px 12px; display: grid; gap: 6px; justify-items: start; }
+  .cc-quote { font-style: italic; }
+  .cc-button { border: 1px solid var(--line); border-radius: 999px; padding: 4px 14px; color: var(--accent); font-weight: 500; margin-top: 4px; }
   .fields { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
   .fields button { font: 12px ui-monospace, Menlo, monospace; padding: 2px 8px; border-radius: 999px; background: var(--chip); }
   dialog::backdrop { background: rgba(0,0,0,.4); }
@@ -359,7 +365,8 @@ function preview() {
     call("POST", "/api/preview", { connectionId: editing ? editing.id : null, kind: key,
       template: $("f-template").value, platform: $("f-platform").value }).then(function (r) {
       if ($("f-event").value !== key) return;
-      $("f-preview").innerHTML = formatChat(r.text) || "<span class='hint'>(empty: nothing would be posted)</span>";
+      $("f-preview").innerHTML = r.card ? "" : (formatChat(r.text) || "<span class='hint'>(empty: nothing would be posted)</span>");
+      if (r.card) $("f-preview").appendChild(cardPreview(r.text, r.card));
       $("f-source").textContent = r.source === "real" ? "last real event, " + new Date(r.at).toLocaleString() : "example data";
       $("f-fields").replaceChildren.apply($("f-fields"), r.fields.map(function (f) {
         return el("button", { type: "button", text: f, on: { click: function () { insertField(f); } } });
@@ -374,6 +381,21 @@ function insertField(path) {
   t.focus(); t.selectionStart = t.selectionEnd = at + token.length;
   templates[$("f-event").value] = t.value;
   preview();
+}
+
+// A look at the Google Chat card: heading, context line, the task, its description, the button.
+function cardPreview(header, card) {
+  return el("div", { "class": "chatcard" }, [
+    el("div", { "class": "cc-head" }, [
+      el("div", { "class": "cc-title", text: header }),
+      card.subtitle ? el("div", { "class": "hint", text: card.subtitle }) : null
+    ]),
+    el("div", { "class": "cc-body" }, [
+      el("b", { text: card.title }),
+      card.description ? el("div", { "class": "cc-quote", text: "“" + card.description + "”" }) : null,
+      card.link ? el("span", { "class": "cc-button", text: "Open the task" }) : null
+    ])
+  ]);
 }
 
 // A rough look at chat formatting: *bold*, _italic_, <url|text>. Escapes everything first.

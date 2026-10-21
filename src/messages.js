@@ -11,6 +11,7 @@ export const PLATFORMS = {
 
 import { taskExtras, nothingChanged, snapshotOf } from "./taskview.js";
 import { LEGACY_TEMPLATES } from "./legacy.js";
+import { taskCard, cardAsText, cardContent } from "./cards.js";
 
 // zInspector's finished statuses that mean the work got done (Canceled and Deferred don't celebrate).
 export const DEFAULT_COMPLETED = "Work Complete,Closed";
@@ -24,30 +25,38 @@ export const EVENTS = [
   {
     key: "task.created",
     label: "Task created",
-    template: [
-      "🆕 *New task* · {{taskTitle}} · Ref {{data.referenceNumber}}",
-      "🏠 {{data.propertyName}} · 📋 {{taskType}}",
-      "👤 {{assigneeOrUnassigned}} · 📅 Due {{dueDate}} · {{priorityFlag}}",
-      "> {{descriptionMore}}",
-    ].join("\n"),
+    card: true,
+    fallback: "New task",
+    hint: "the card's heading; the assignee is @mentioned above the card when their chat id is on file",
+    template: "{{assigneeFirstName}} has a new task",
+  },
+  {
+    key: "task.assigned",
+    label: "Task newly assigned",
+    card: true,
+    fallback: "A task was assigned",
+    hint: "a Task updated that gave the task to someone; the card's heading",
+    template: "{{assigneeFirstName}} was assigned a task",
   },
   {
     key: "task.updated",
     label: "Task updated",
-    hint: "posted only when something visible changed (status, assignee, dates, priority…); the list shows what",
-    template: ["✏️ {{taskTitle}} · Ref {{data.referenceNumber}}", "{{changes}}"].join("\n"),
+    hint: "posted only when something visible changed (status, dates, priority…); the list shows what",
+    template: ["✏️ {{taskTitle}}", "{{changes}}"].join("\n"),
   },
   {
     key: "task.completed",
     label: "Task completed",
-    hint: "a Task updated whose status just moved to a done status (once per task)",
-    template: ["✅ *{{data.status}}* · {{taskTitle}} · Ref {{data.referenceNumber}}", "🎉 Nice work, {{assignee}}!"].join("\n"),
+    card: true,
+    fallback: "A task was finished",
+    hint: "a Task updated whose status just moved to a done status (once per task); the card's heading",
+    template: "{{assigneeFirstName}} finished a task ✅",
   },
   {
     key: "task.message.created",
     label: "New task message",
     template: [
-      "💬 *New message* · {{taskTitle}} · Ref {{data.referenceNumber}}",
+      "💬 *New message* · {{taskTitle}}",
       "> {{messageText}}",
       "— {{messageAuthor}}",
     ].join("\n"),
@@ -80,6 +89,7 @@ const TASK_EXAMPLE = {
   priority: 4,
   endDate: "2026-10-30",
   assignedTo: { id: 42116, name: "Tania Aguirre", email: "tania@zinspector.com" },
+  manager: { id: 17416, name: "Laura E.", email: "laura@zinspector.com" },
   propertyName: "Marketing.Conferences",
   propertyAddress: "123 Jones, Davis, CA 95616, US",
   referenceNumber: "313307",
@@ -94,6 +104,7 @@ const UPDATED_EXAMPLE = {
 export const EXAMPLES = {
   "task.created": { type: "task.created", data: TASK_EXAMPLE },
   "task.updated": { type: "task.updated", data: UPDATED_EXAMPLE },
+  "task.assigned": { type: "task.updated", data: { ...TASK_EXAMPLE, assignedTo: UPDATED_EXAMPLE.assignedTo } },
   "task.completed": { type: "task.updated", data: { ...UPDATED_EXAMPLE, status: { id: 5, value: "Work Complete" } } },
   "task.message.created": {
     type: "task.message.created",
@@ -106,6 +117,7 @@ export const EXAMPLES = {
 // What the task looked like before each example, so the previews can show changes.
 export const EXAMPLE_PREVIOUS = {
   "task.updated": snapshotOf(TASK_EXAMPLE),
+  "task.assigned": snapshotOf(TASK_EXAMPLE),
   "task.completed": snapshotOf(UPDATED_EXAMPLE),
 };
 
@@ -121,7 +133,10 @@ export function eventKind(event, settings = {}, previous = null) {
     const isDone = (status) => Boolean(status) && done.includes(String(status).toLowerCase());
     const nowDone = isDone(valueText(event.data?.status));
     // Only a task the chat already knew as not done counts as completed (bulk clean-ups of old tasks don't).
-    return previous && nowDone && !isDone(previous.status) ? "task.completed" : "task.updated";
+    if (previous && nowDone && !isDone(previous.status)) return "task.completed";
+    const assignee = snapshotOf(event.data || {}).assignee;
+    if (previous && assignee && personKey(assignee) !== personKey(previous.assignee)) return "task.assigned";
+    return "task.updated";
   }
   return EVENT_KEYS.includes(event.type) && event.type !== "other" ? event.type : "other";
 }
@@ -174,18 +189,17 @@ export function skipReason(event, connection, settings = {}, previous = null) {
   if (!matchesAudience(now, audience) && !wasFollowed) return "not-for-this-chat";
   if (kind === "task.updated" && !previous) return "first-seen";
   if (kind === "task.updated" && nothingChanged(previous, event.data)) return "no-change";
-  if (!alertsOf(connection)[alertCategory(kind, previous, event.data)]) return "alert-off";
+  if (ALERT_OF_KIND[kind] && !alertsOf(connection)[ALERT_OF_KIND[kind]]) return "alert-off";
   return null;
 }
 
-function alertCategory(kind, previous, data) {
-  if (kind === "task.created") return "created";
-  if (kind === "task.completed") return "completed";
-  if (kind === "task.message.created") return "messages";
-  const now = snapshotOf(data);
-  const assignedNow = now.assignee && personKey(now.assignee) !== personKey(previous?.assignee);
-  return assignedNow ? "assigned" : "changes";
-}
+const ALERT_OF_KIND = {
+  "task.created": "created",
+  "task.assigned": "assigned",
+  "task.completed": "completed",
+  "task.message.created": "messages",
+  "task.updated": "changes",
+};
 
 function personKey(p) {
   return p ? (p.email || p.name || "").toLowerCase() : "";
@@ -197,12 +211,37 @@ function matchesAudience(snapshot, audience) {
   return Boolean(snapshot.assignee || (audience === "assigned-or-next" && snapshot.next));
 }
 
-// The message for an event, or null when it isn't posted (see skipReason).
+// The message text for an event, or null when it isn't posted (see skipReason). For card events this is
+// the card's heading.
 export function buildMessage(event, connection, settings = {}, previous = null) {
   const kind = eventKind(event, settings, previous);
   if (kind === "test") return TEST_MESSAGE;
   if (skipReason(event, connection, settings, previous)) return null;
-  return render(templateFor(connection, kind), event, settings, connection.platform, previous, kind);
+  const text = render(templateFor(connection, kind), event, settings, connection.platform, previous, kind);
+  const info = EVENTS.find((e) => e.key === kind);
+  return info?.card ? text.replace(/[*_]/g, "").trim() || info.fallback : text;
+}
+
+// What is sent to the chat: {text} or, for new / newly assigned / finished tasks in Google Chat,
+// {text, cardsV2}. Slack gets the card's content as text. Null when nothing is posted.
+export function buildPayload(event, connection, settings = {}, previous = null) {
+  const text = buildMessage(event, connection, settings, previous);
+  if (text === null) return null;
+  const kind = eventKind(event, settings, previous);
+  if (!EVENTS.find((e) => e.key === kind)?.card) return { text };
+  const card = { header: text, ...cardFor(event, settings, connection.platform, previous, kind) };
+  // Only a real @mention (the person's chat id is on file) goes above the card: it's what notifies them.
+  const extras = extrasFor(event, settings, connection.platform, previous, kind);
+  const mention = extras.assignee.startsWith("<") ? extras.assignee : "";
+  if (connection.platform === "google-chat") {
+    return mention ? { text: mention, cardsV2: [taskCard(card)] } : { cardsV2: [taskCard(card)] };
+  }
+  return { text: [mention, cardAsText(card)].filter(Boolean).join("\n") };
+}
+
+// A task card's context line, title, description and link.
+export function cardFor(event, settings, platform, previous, kind) {
+  return cardContent(extrasFor(event, settings, platform, previous, kind), kind, valueText(event.data?.status));
 }
 
 // A saved message still identical to an earlier default moves to the current default.
@@ -212,13 +251,17 @@ export function templateFor(connection, kind) {
   return saved == null || LEGACY_TEMPLATES[kind]?.includes(saved) ? fallback : saved;
 }
 
-export function render(template, event, settings = {}, platform = "google-chat", previous = null, kind = null) {
+function extrasFor(event, settings, platform, previous, kind) {
   const mentionOf = (person) => mentionFor(person, settings.people, platform);
   const link = taskUrl(event.data?.id, settings.taskUrl);
-  const extras = {
+  return {
     ...taskExtras({ event, previous, kind: kind || eventKind(event, settings, previous), link, mentionOf }),
     mention: mentionOf(event.data?.assignedTo || event.data?.assignedToContact),
   };
+}
+
+export function render(template, event, settings = {}, platform = "google-chat", previous = null, kind = null) {
+  const extras = extrasFor(event, settings, platform, previous, kind);
   const lookup = (path) => (Object.hasOwn(extras, path) ? extras[path] || "" : valueText(read(event, path)));
 
   const fill = (part) => part.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, p) => lookup(p));

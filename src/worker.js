@@ -7,7 +7,7 @@
 // Sign-in: Cloudflare Access (ACCESS_TEAM_DOMAIN + ACCESS_AUD) when set, else the ADMIN_PASSWORD secret.
 // Bindings: KV namespace RELAY.
 
-import { buildMessage, skipReason, SKIP_REASONS, AUDIENCES, ALERTS, alertsOf, eventKind, deliveryUrl, render, fieldPaths, templateFor, EVENTS, EXAMPLES, EXAMPLE_PREVIOUS, TEST_MESSAGE } from "./messages.js";
+import { buildMessage, buildPayload, cardFor, skipReason, SKIP_REASONS, AUDIENCES, ALERTS, alertsOf, eventKind, deliveryUrl, render, fieldPaths, templateFor, EVENTS, EXAMPLES, EXAMPLE_PREVIOUS, TEST_MESSAGE } from "./messages.js";
 import { snapshotOf, EXTRA_NAMES } from "./taskview.js";
 import {
   getConnections,
@@ -81,7 +81,7 @@ async function relay(request, env, id) {
   const skip = skipReason(event, connection, settings, previous);
   const result = skip
     ? { ok: true, status: 200, body: `Not posted: ${SKIP_REASONS[skip]}.`, skipped: skip }
-    : await postToChat(connection, event, buildMessage(event, connection, settings, previous));
+    : await postToChat(connection, event, buildPayload(event, connection, settings, previous));
   // Remember the task's state (also when not posted) so the next update can say what changed.
   const keepsState = taskId != null && event.type !== "task.message.created" && result.ok;
   const snapshot = keepsState ? snapshotOf(event.data) : null;
@@ -90,11 +90,12 @@ async function relay(request, env, id) {
   return text(result.body, result.ok ? 200 : 502);
 }
 
-async function postToChat(connection, event, message) {
+// `payload` is {text} or {text, cardsV2}.
+async function postToChat(connection, event, payload) {
   const res = await fetch(deliveryUrl(connection, event), {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=UTF-8" },
-    body: JSON.stringify({ text: message }),
+    body: JSON.stringify(payload),
   });
   return { ok: res.ok, status: res.status, body: await res.text() };
 }
@@ -147,6 +148,7 @@ async function api(request, env, url, user) {
     const platform = input.platform === "slack" ? "slack" : "google-chat";
     return json({
       text: render(String(input.template || ""), event, await getSettings(kv), platform, previous, kind),
+      card: EVENTS.find((e) => e.key === kind)?.card ? cardFor(event, await getSettings(kv), platform, previous, kind) : null,
       fields: [...EXTRA_NAMES, ...fieldPaths(event)],
       source: sample ? "real" : "example",
       at: sample?.at || null,
@@ -188,7 +190,7 @@ async function api(request, env, url, user) {
   if (parts[3] === "log" && method === "GET") return json((await getActivity(kv, id)).entries);
   if (parts[3] === "test" && method === "POST") {
     const event = { type: "webhook.test" };
-    const result = await postToChat(existing, event, TEST_MESSAGE);
+    const result = await postToChat(existing, event, { text: TEST_MESSAGE });
     const entry = logEntry("test", event, result);
     await saveActivity(kv, id, await getActivity(kv, id), { entry, kind: "test", event });
     return json({ ok: entry.ok, status: entry.status, detail: entry.detail });

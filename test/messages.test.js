@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildMessage, render, eventKind, deliveryUrl, fieldPaths, defaultTemplates, DEFAULT_TASK_URL } from "../src/messages.js";
+import { buildMessage, buildPayload, render, eventKind, deliveryUrl, fieldPaths, defaultTemplates, DEFAULT_TASK_URL } from "../src/messages.js";
 import { snapshotOf } from "../src/taskview.js";
 import { created, withStatus, GCHAT_URL } from "./helpers.js";
 
@@ -9,34 +9,39 @@ const gchat = { platform: "google-chat", chatUrl: GCHAT_URL, templates: defaultT
 const withLink = { taskUrl: DEFAULT_TASK_URL };
 const update = (data) => ({ ...created, type: "task.updated", data: { ...created.data, ...data } });
 
-test("a new task fits in a few lines, with its title (the description) as the link", () => {
-  const event = { ...created, data: { ...created.data, endDate: "2026-10-30", priority: 4 } };
-  assert.equal(
-    buildMessage(event, gchat, withLink),
-    [
-      "🆕 *New task* · <https://dashboard.zinspector.com/task/view/2160012|test task> · Ref 313307",
-      "🏠 Marketing.Conferences · 📋 Marketing",
-      "👤 *Tania Aquirre* · 📅 Due Oct 30 · 🔺 High priority",
-    ].join("\n"),
-  );
+test("a new task is a card: who it's for, context, the task, and an Open the task button", () => {
+  const event = { ...created, data: { ...created.data, endDate: "2026-10-30", priority: 4, manager: { name: "Laura E." }, description: "Book the booth\nand send the attendee list" } };
+  const payload = buildPayload(event, gchat, withLink);
+  assert.equal(payload.text, undefined); // no chat id on file, so nothing to @mention
+  assert.deepEqual(payload.cardsV2[0].card, {
+    header: { title: "Tania has a new task", subtitle: "from Laura · Conferences · Due Fri, Oct 30 · 🔺 High priority" },
+    sections: [{ widgets: [
+      { textParagraph: { text: "<b>Book the booth</b><br><i>“Book the booth and send the attendee list”</i>" } },
+      { buttonList: { buttons: [{ text: "Open the task", onClick: { openLink: { url: "https://dashboard.zinspector.com/task/view/2160012" } } }] } },
+    ] }],
+  });
 });
 
-test("says when a new task has nobody on it (for chats that get all tasks), and leaves out normal priority and missing dates", () => {
-  const text = buildMessage({ ...created, data: { ...created.data, assignedTo: null } }, { ...gchat, only: "all" });
-  assert.match(text, /👤 _Unassigned_$/m);
-  assert.doesNotMatch(text, /priority|Due/);
+test("Slack gets the same note as text", () => {
+  const payload = buildPayload(created, { ...gchat, platform: "slack" }, withLink);
+  assert.equal(payload.cardsV2, undefined);
+  assert.equal(payload.text, "*Tania has a new task*\n<https://dashboard.zinspector.com/task/view/2160012|test task>\nConferences");
 });
 
-test("shows a vendor when the task is assigned to a contact", () => {
+test("a new task with nobody on it (for chats that get all tasks) still reads well, without normal priority or missing dates", () => {
+  const { card } = buildPayload({ ...created, data: { ...created.data, assignedTo: null } }, { ...gchat, only: "all" }).cardsV2[0];
+  assert.deepEqual(card.header, { title: "New task", subtitle: "Conferences" });
+});
+
+test("names a vendor when the task is assigned to a contact", () => {
   const event = { ...created, data: { ...created.data, assignedTo: null, assignedToContact: { name: "Acme Painting" } } };
-  assert.match(buildMessage(event, gchat), /👤 \*Acme Painting\*/);
+  assert.equal(buildMessage(event, gchat), "Acme has a new task");
 });
 
 test("an update lists only what changed", () => {
   const before = snapshotOf(created.data);
   const event = update({
     status: { id: 2, value: "In Progress" },
-    assignedTo: { name: "Tim Wallace", email: "tim+onsight@zinspector.com" },
     endDate: "2026-11-02",
     priority: 5,
   });
@@ -44,9 +49,8 @@ test("an update lists only what changed", () => {
   assert.equal(
     buildMessage(event, gchat, settings, before),
     [
-      "✏️ *test task* · Ref 313307",
+      "✏️ *test task*",
       "• Status: New → *In Progress*",
-      "• Assigned: Tania Aquirre → <users/110410588780324983531>",
       "• Due: *Nov 2*",
       "• Priority: Normal → *Highest*",
     ].join("\n"),
@@ -79,7 +83,7 @@ test("a new message shows its author and the first lines, without signature or H
   };
   assert.equal(
     buildMessage(event, gchat),
-    "💬 *New message* · *test task* · Ref 313307\n> If this shows up as a task, we're ready.\n— Greg Owen",
+    "💬 *New message* · *test task*\n> If this shows up as a task, we're ready.\n— Greg Owen",
   );
   const html = { type: "task.message.created", data: { comment: "<div>Hello <b>there</b>&nbsp;team</div><div>On Mon, Oct 20 Ann wrote:</div>" } };
   assert.match(buildMessage(html, { ...gchat, only: "all" }), /> Hello there team$/m);
@@ -105,8 +109,8 @@ test("doesn't mistake built-in object names for fields", () => {
 test("mentions in the chat app's own syntax, matching emails with or without a +tag", () => {
   const settings = { people: [{ email: "Tania@zInspector.com", googleChatId: "1234", slackId: "U99" }] };
   const tagged = { ...created, data: { ...created.data, assignedTo: { name: "T", email: "tania+onsight@zinspector.com" } } };
-  assert.match(buildMessage(tagged, gchat, settings), /👤 <users\/1234>/);
-  assert.match(buildMessage(tagged, { ...gchat, platform: "slack" }, settings), /👤 <@U99>/);
+  assert.equal(buildPayload(tagged, gchat, settings).text, "<users/1234>");
+  assert.match(buildPayload(tagged, { ...gchat, platform: "slack" }, settings).text, /^<@U99>\n/);
 });
 
 test("lists an event's fields for the template helper", () => {
@@ -124,12 +128,27 @@ test("Google Chat groups a task's messages in one thread and keeps the URL's key
   assert.equal(deliveryUrl({ platform: "slack", chatUrl: slack }, created), slack);
 });
 
-test("a long title is cut, the rest of the description is quoted, and link-breaking characters are dropped", () => {
+test("a long title is cut on the card, the full description is quoted, and link-breaking characters are dropped", () => {
   const description = "Sponsor Opportunities! 2027 CALNARPM Conference <Anchored in Excellence> | booth, panel and dinner options for next year";
-  const text = buildMessage({ ...created, data: { ...created.data, description } }, gchat, withLink);
-  const [first, , , quote] = text.split("\n");
-  const label = first.match(/\|(.+)> · Ref/)[1];
-  assert.ok(label.startsWith("Sponsor Opportunities! 2027 CALNARPM Conference Anchored in Excellence"), label);
-  assert.ok(label.endsWith("…") && label.length <= 91 && !/[<>|]/.test(label), label);
-  assert.equal(quote, `> ${description}`);
+  const event = { ...created, data: { ...created.data, description } };
+  const { card } = buildPayload(event, gchat, withLink).cardsV2[0];
+  const [bold, quote] = card.sections[0].widgets[0].textParagraph.text.split("<br>");
+  assert.ok(bold.endsWith("…</b>") && !bold.includes("<Anchored"), bold);
+  assert.equal(quote, `<i>“${description.replace("<", "&lt;").replace(">", "&gt;")}”</i>`);
+  const update = { ...event, type: "task.updated", data: { ...event.data, status: { value: "In Progress" } } };
+  const label = buildMessage(update, gchat, withLink, snapshotOf(event.data)).match(/\|(.+)>/)[1];
+  assert.ok(!/[<>|]/.test(label), label);
+});
+
+test("a finished task's card says how it ended", () => {
+  const before = snapshotOf({ ...created.data, status: { value: "In Progress" } });
+  const payload = buildPayload(withStatus("Work Complete"), gchat, {}, before);
+  assert.deepEqual(payload.cardsV2[0].card.header, { title: "Tania finished a task ✅", subtitle: "Work Complete · Conferences" });
+});
+
+test("a task given to someone is a newly assigned alert", () => {
+  const event = update({ assignedTo: { name: "Tim Wallace" }, manager: { name: "Laura E." } });
+  assert.equal(eventKind(event, {}, snapshotOf(created.data)), "task.assigned");
+  const { header } = buildPayload(event, gchat, {}, snapshotOf(created.data)).cardsV2[0].card;
+  assert.deepEqual(header, { title: "Tim was assigned a task", subtitle: "from Laura · Conferences" });
 });
