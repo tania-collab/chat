@@ -4,7 +4,8 @@ import { buildMessage, render, eventKind, deliveryUrl, fieldPaths, defaultTempla
 import { snapshotOf } from "../src/taskview.js";
 import { created, withStatus, GCHAT_URL } from "./helpers.js";
 
-const gchat = { platform: "google-chat", chatUrl: GCHAT_URL, templates: defaultTemplates() };
+const ALL_ALERTS = { created: true, assigned: true, completed: true, changes: true, messages: true };
+const gchat = { platform: "google-chat", chatUrl: GCHAT_URL, templates: defaultTemplates(), alerts: ALL_ALERTS };
 const withLink = { taskUrl: DEFAULT_TASK_URL };
 const update = (data) => ({ ...created, type: "task.updated", data: { ...created.data, ...data } });
 

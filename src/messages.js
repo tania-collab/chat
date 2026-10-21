@@ -137,13 +137,29 @@ export const AUDIENCES = {
   assigned: "Tasks with someone assigned",
   all: "All tasks",
 };
-export const DEFAULT_AUDIENCE = "assigned-or-next";
+export const DEFAULT_AUDIENCE = "assigned";
+
+// Which task alerts a chat posts. Updates are always tracked, so "finished" works with "changes" off.
+export const ALERTS = {
+  created: { label: "New tasks", on: true },
+  assigned: { label: "Newly assigned tasks", on: true },
+  completed: { label: "Finished tasks (a done status)", on: true },
+  changes: { label: "Other changes (status, dates, priority…)", on: false },
+  messages: { label: "New messages on a task", on: false },
+};
+
+export function alertsOf(connection) {
+  return Object.fromEntries(
+    Object.entries(ALERTS).map(([key, a]) => [key, typeof connection.alerts?.[key] === "boolean" ? connection.alerts[key] : a.on]),
+  );
+}
 
 // Why an event isn't posted, or null when it is. Readable text for each reason is in SKIP_REASONS.
 export const SKIP_REASONS = {
   "not-for-this-chat": "nobody on the task matches this chat's rule (assigned / next to-do)",
   "first-seen": "first time this task was seen, so there's nothing to compare",
   "no-change": "nothing visible changed",
+  "alert-off": "this kind of alert is turned off for this chat",
 };
 
 export function skipReason(event, connection, settings = {}, previous = null) {
@@ -158,7 +174,21 @@ export function skipReason(event, connection, settings = {}, previous = null) {
   if (!matchesAudience(now, audience) && !wasFollowed) return "not-for-this-chat";
   if (kind === "task.updated" && !previous) return "first-seen";
   if (kind === "task.updated" && nothingChanged(previous, event.data)) return "no-change";
+  if (!alertsOf(connection)[alertCategory(kind, previous, event.data)]) return "alert-off";
   return null;
+}
+
+function alertCategory(kind, previous, data) {
+  if (kind === "task.created") return "created";
+  if (kind === "task.completed") return "completed";
+  if (kind === "task.message.created") return "messages";
+  const now = snapshotOf(data);
+  const assignedNow = now.assignee && personKey(now.assignee) !== personKey(previous?.assignee);
+  return assignedNow ? "assigned" : "changes";
+}
+
+function personKey(p) {
+  return p ? (p.email || p.name || "").toLowerCase() : "";
 }
 
 function matchesAudience(snapshot, audience) {

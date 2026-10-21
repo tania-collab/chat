@@ -8,6 +8,8 @@ const marketing = {
   platform: "google-chat",
   chatUrl: GCHAT_URL,
   token: "secret-1",
+  // Most tests check message content, so this chat posts every kind of alert.
+  alerts: { created: true, assigned: true, completed: true, changes: true, messages: true },
 };
 
 async function addConnection(env, body = marketing) {
@@ -204,7 +206,7 @@ test("Work Complete and Closed celebrate; Canceled and Deferred don't", async ()
   }
 });
 
-test("posts only tasks with someone assigned or a next to-do, as the chat's rule says", async () => {
+test("posts only tasks with someone assigned (or a next to-do), as the chat's rule says", async () => {
   const unassigned = { ...created, data: { ...created.data, id: 11, assignedTo: null, nextToDo: null } };
   const nextOnly = { ...created, data: { ...created.data, id: 12, assignedTo: null, nextToDo: { id: 1, name: "Laura E." } } };
   const posted = async (only) => {
@@ -215,8 +217,8 @@ test("posts only tasks with someone assigned or a next to-do, as the chat's rule
       return calls.length;
     });
   };
-  assert.equal(await posted(undefined), 2); // default: assigned or next to-do
-  assert.equal(await posted("assigned"), 1);
+  assert.equal(await posted(undefined), 1); // default: someone assigned
+  assert.equal(await posted("assigned-or-next"), 2);
   assert.equal(await posted("all"), 3);
 });
 
@@ -263,4 +265,23 @@ test("a pasted list can't create the same person twice", async () => {
     people: [{ email: "Maria@zinspector.com", googleChatId: "111111" }, { email: "maria@zinspector.com", googleChatId: "222222" }],
   });
   assert.deepEqual((await res.json()).people, [{ email: "maria@zinspector.com", googleChatId: "222222", slackId: "" }]);
+});
+
+test("by default a chat gets new, newly assigned and finished tasks, not other changes or messages", async () => {
+  const env = makeEnv();
+  const { alerts, ...plain } = marketing;
+  const c = await addConnection(env, plain);
+  const unassigned = { ...created, data: { ...created.data, id: 21, assignedTo: null } };
+  await withChat(200, async (calls) => {
+    await hook(env, c.id, created, "secret-1"); // new, assigned: posted
+    await hook(env, c.id, withStatus("In Progress"), "secret-1"); // status change: tracked, not posted
+    await hook(env, c.id, { type: "task.message.created", data: { ...created.data, message: "hi" } }, "secret-1"); // message: off
+    await hook(env, c.id, withStatus("Work Complete"), "secret-1"); // finished: posted
+    await hook(env, c.id, unassigned, "secret-1"); // new but nobody assigned: not posted
+    await hook(env, c.id, { ...unassigned, type: "task.updated", data: { ...unassigned.data, assignedTo: { name: "Tim Wallace" } } }, "secret-1"); // newly assigned: posted
+    assert.deepEqual(calls.map((call) => [...call.body.text][0]), ["🆕", "✅", "✏"]);
+    assert.match(calls[2].body.text, /Assigned: \*Tim Wallace\*/);
+  });
+  const log = await (await admin(env, "GET", `/api/connections/${c.id}/log`)).json();
+  assert.equal(log.filter((e) => e.skipped === "alert-off").length, 2);
 });

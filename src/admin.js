@@ -128,6 +128,8 @@ export const ADMIN_HTML = String.raw`<!doctype html>
     <input type="password" id="f-token" autocomplete="off">
     <label for="f-only">Post task alerts for <span class="hint">tasks that don't match are remembered but not posted</span></label>
     <select id="f-only"></select>
+    <label>Post these alerts</label>
+    <div class="checks" id="f-alerts"></div>
     <h2 style="margin:24px 0 4px">Messages</h2>
     <div class="hint">{{field}} puts in a value from the event. A line, or a part of a line between " · ", is left out when one of its fields is empty.
       Ready-made: {{taskTitle}} (the task, linked), {{assignee}} (@mentioned on new tasks, new assignments and completions),
@@ -324,7 +326,12 @@ function openForm(c) {
   $("f-only").replaceChildren.apply($("f-only"), Object.keys(state.audiences).map(function (k) {
     return el("option", { value: k, text: state.audiences[k] });
   }));
-  $("f-only").value = c && state.audiences[c.only] ? c.only : "assigned-or-next";
+  $("f-only").value = c && state.audiences[c.only] ? c.only : "assigned";
+  $("f-alerts").replaceChildren.apply($("f-alerts"), Object.keys(state.alerts).map(function (k) {
+    var box = el("input", { type: "checkbox", "data-alert": k });
+    box.checked = c && c.alerts ? !!c.alerts[k] : state.alerts[k].on;
+    return el("label", {}, [box, document.createTextNode(" " + state.alerts[k].label)]);
+  }));
   templates = {};
   state.events.forEach(function (e) { templates[e.key] = c && c.templates && c.templates[e.key] != null ? c.templates[e.key] : e.template; });
   $("f-event").replaceChildren.apply($("f-event"), state.events.map(function (e) { return el("option", { value: e.key, text: e.label }); }));
@@ -391,7 +398,10 @@ $("form").addEventListener("submit", function (ev) {
   ev.preventDefault();
   var body = {
     name: $("f-name").value, platform: $("f-platform").value, chatUrl: $("f-chatUrl").value, token: $("f-token").value,
-    only: $("f-only").value, templates: templates
+    only: $("f-only").value, templates: templates,
+    alerts: Object.fromEntries(Array.prototype.map.call($("f-alerts").querySelectorAll("input"), function (b) {
+      return [b.getAttribute("data-alert"), b.checked];
+    }))
   };
   var req = editing ? call("PUT", "/api/connections/" + editing.id, body) : call("POST", "/api/connections", body);
   req.then(function () { $("dialog").close(); return load(); })
