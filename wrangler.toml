@@ -2,6 +2,9 @@ name = "chat"
 main = "src/worker.js"
 compatibility_date = "2026-09-01"
 
+# Keep the variables set in the Cloudflare dashboard (ACCESS_TEAM_DOMAIN, ACCESS_AUD, ...) when deploying from git.
+keep_vars = true
+
 # Connections, settings and delivery logs. Without an id, Wrangler creates the namespace on first deploy.
 [[kv_namespaces]]
 binding = "RELAY"
