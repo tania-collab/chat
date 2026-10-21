@@ -1,6 +1,6 @@
 // Connections, settings and delivery logs, kept in the Workers KV namespace bound as RELAY.
 
-import { PLATFORMS, DEFAULT_COMPLETED, EVENTS, MAX_TEMPLATE } from "./messages.js";
+import { PLATFORMS, DEFAULT_COMPLETED, DEFAULT_TASK_URL, EVENTS, MAX_TEMPLATE } from "./messages.js";
 
 const LOG_SIZE = 20;
 
@@ -14,7 +14,14 @@ export async function saveConnections(kv, connections) {
 
 export async function getSettings(kv) {
   const saved = (await kv.get("settings", "json")) || {};
-  return { taskUrl: "", completedStatuses: DEFAULT_COMPLETED, people: [], ...saved };
+  // "Completed,Closed" was the first default; zInspector has no "Completed" status.
+  const completed = saved.completedStatuses === "Completed,Closed" ? "" : saved.completedStatuses;
+  return {
+    people: [],
+    ...saved,
+    taskUrl: saved.taskUrl || DEFAULT_TASK_URL,
+    completedStatuses: completed || DEFAULT_COMPLETED,
+  };
 }
 
 // Per connection: the last deliveries, and the last event of each kind (for previews and field names).

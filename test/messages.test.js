@@ -48,7 +48,7 @@ test("adds a task link when one is set", () => {
 });
 
 test("picks the template for each zInspector event", () => {
-  assert.equal(eventKind(withStatus("Completed")), "task.completed");
+  assert.equal(eventKind(withStatus("Work Complete")), "task.completed");
   assert.equal(eventKind(withStatus("Finished"), { completedStatuses: "Finished" }), "task.completed");
   assert.equal(eventKind(withStatus("In Progress")), "task.updated");
   assert.equal(eventKind({ type: "zdata.changed" }), "zdata.changed");

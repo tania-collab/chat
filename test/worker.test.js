@@ -63,7 +63,7 @@ test("posts every event zInspector sends, each with its own message", async () =
   const c = await addConnection(env);
   await withChat(200, async (calls) => {
     await hook(env, c.id, withStatus("In Progress"), "secret-1");
-    await hook(env, c.id, withStatus("Completed"), "secret-1");
+    await hook(env, c.id, withStatus("Work Complete"), "secret-1");
     await hook(env, c.id, { type: "zdata.changed", data: { area: "Account", detail: "Notes", actionType: "Updated" } }, "secret-1");
     assert.deepEqual(
       calls.map((call) => call.body.text.split("\n")[0]),
@@ -148,4 +148,35 @@ test("editing keeps the address; deleting stops relaying", async () => {
   assert.deepEqual([edited.id, edited.name], [c.id, "Mktg"]);
   await admin(env, "DELETE", `/api/connections/${c.id}`);
   assert.equal((await hook(env, c.id, created, "secret-1")).status, 404);
+});
+
+test("links each message to its own task page without any setup", async () => {
+  const env = makeEnv();
+  const c = await addConnection(env);
+  await withChat(200, async (calls) => {
+    await hook(env, c.id, created, "secret-1");
+    assert.match(calls[0].body.text, /<https:\/\/dashboard\.zinspector\.com\/task\/view\/2160012\|Open in zInspector>$/);
+  });
+});
+
+test("Work Complete and Closed celebrate; Canceled and Deferred don't", async () => {
+  const env = makeEnv();
+  const c = await addConnection(env);
+  await withChat(200, async (calls) => {
+    for (const status of ["Work Complete", "Closed", "Canceled", "Deferred"]) {
+      await hook(env, c.id, withStatus(status), "secret-1");
+    }
+    assert.deepEqual(
+      calls.map((call) => call.body.text.includes("Task completed")),
+      [true, true, false, false],
+    );
+  });
+});
+
+test("settings saved with the old defaults move to zInspector's statuses and task link", async () => {
+  const env = makeEnv();
+  await env.RELAY.put("settings", JSON.stringify({ taskUrl: "", completedStatuses: "Completed,Closed", people: [] }));
+  const { settings } = await (await admin(env, "GET", "/api/state")).json();
+  assert.equal(settings.completedStatuses, "Work Complete,Closed");
+  assert.equal(settings.taskUrl, "https://dashboard.zinspector.com/task/view/{id}");
 });
