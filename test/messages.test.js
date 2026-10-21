@@ -71,3 +71,9 @@ test("Google Chat groups a task's messages in one thread and keeps the URL's key
   const slack = "https://hooks.slack.com/services/X";
   assert.equal(deliveryUrl({ platform: "slack", chatUrl: slack }, created), slack);
 });
+
+test("matches people whether or not zInspector tags their email (+onsight)", () => {
+  const settings = { people: [{ email: "aj@zinspector.com", googleChatId: "102245061761548994358" }] };
+  const tagged = { ...created, data: { ...created.data, assignedTo: { name: "AJ M.", email: "AJ+onsight@zinspector.com" } } };
+  assert.match(buildMessage(tagged, gchat, settings), /Assigned to <users\/102245061761548994358>/);
+});
