@@ -7,33 +7,29 @@ has its own address that you paste as the **Destination URL** of a zInspector we
 which events it sends (events and filters are set on its Edit Webhook screen); the app checks the webhook
 token, writes the message for that event, and posts it to the connection's chat.
 
-Each event has its own message, with default copy you can edit per connection:
+Each event has its own message, short because a task's messages share one Google Chat thread:
 
-| zInspector event | Default message starts with |
+| zInspector event | Default message |
 |---|---|
-| Task created (`task.created`) | ✨ *We have a new task!* |
-| Task updated (`task.updated`) | ✏️ *Task updated:* |
-| Task updated to a "done" status | 🎉 *Task completed!* |
-| New task message (`task.message.created`) | 💬 *New message on a task:* |
-| Reports distributed (`report.distributed`) | 📄 *A report was sent* |
-| zData changed (`zdata.changed`) | 🗂️ *zData Updated:* area › detail |
-| any other event | 🔔 *zInspector: event name* |
-| Send test (`webhook.test`) | ✅ zInspector is connected to this chat. |
+| Task created | 🆕 *New task* · task name (linked) · Ref; property; assignee (or _Unassigned_), due date, priority if not normal; description |
+| Task updated | ✏️ task · Ref, then only what changed: `Status: New → In Progress`, `Assigned: AJ → @Tim`, `Due: Nov 2`… Updates that change nothing visible aren't posted. |
+| Task updated into a "done" status | ✅ *Work Complete* · task · Ref; 🎉 Nice work, @assignee! (once per task) |
+| New task message | 💬 *New message* · task · Ref; the first lines of the message, without signature; its author |
+| Reports distributed | 📄 *Report sent* · property · Ref |
+| zData changed | 🗂️ *area › detail* action · property; the value |
+| any other event | 🔔 *event name* · property |
+| Send test | ✅ zInspector is connected to this chat. |
 
-On the admin page you can:
-
-- add, edit and delete connections (Google Chat or Slack),
-- copy each connection's Destination URL for zInspector,
-- edit each event's message with a live preview; once a real event of that kind arrives, the preview uses it
-  and lists its fields, so you can click a field to insert it,
-- send a test message and see the last 20 deliveries (with the chat's error when one fails),
-- set the task link, which statuses count as "done", and people's chat ids for real @mentions.
+The assignee is @mentioned on a new task, when a task is assigned to them, and on completion, not on every
+update. To tell what changed, the app remembers the last state of the 300 most recently seen tasks per chat.
+Messages still on an earlier default switch to the current one; edited messages stay as written.
 
 ### Message templates
 
 - `{{data.propertyName}}` puts in a value from the event; `{{data.status}}` shows a status's name, `{{data.assignedTo}}`
   a person's name.
-- `{{mention}}` @mentions the assignee (see People below); `{{taskLink}}` is the task's page in zInspector.
+- Ready-made values: `{{taskTitle}}` (the task, linked), `{{assignee}}`, `{{assigneeOrUnassigned}}`, `{{changes}}`,
+  `{{dueDate}}`, `{{priorityFlag}}`, `{{shortDescription}}`, `{{messageText}}`, `{{messageAuthor}}`, `{{taskLink}}`.
 - A line, or a part of a line between ` · `, is left out when one of its fields is empty.
 - Formatting: `*bold*`, `_italic_`, `<https://link|text>`.
 
@@ -117,7 +113,6 @@ them in every account.
 - A wrong or missing token gets 401 and nothing is posted. A connection without a token accepts anyone who
   knows its address; the app flags it.
 - If the chat refuses a message, zInspector gets 502 with the chat's reason, so it shows in its Delivery History.
-- zInspector doesn't send the previous status, so a task edited while already "done" posts the celebration again.
 - The free KV plan allows 1,000 writes a day; each delivery is one write.
 - Chat webhook URLs and tokens are passwords. They live only in the app's storage, never in this repo.
 
@@ -130,5 +125,7 @@ them in every account.
 |---|---|
 | `src/worker.js` | routes: `/hook/<id>` relay, `/` admin page, `/api/...` |
 | `src/messages.js` | events, default copy, the template engine, @mentions, threads |
+| `src/taskview.js` | task state, what changed, ready-made values |
+| `src/legacy.js` | earlier default copy, to move unedited messages forward |
 | `src/store.js` | connections, settings, logs and last events in KV, input checks |
 | `src/admin.js` | the admin page (HTML + JS) |
