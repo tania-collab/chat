@@ -73,8 +73,16 @@ test("says which setting to fix when the sign-in doesn't match", async () => {
   assert.match(await text(await token({ aud: ["the-real-aud"] })), /Set ACCESS_AUD to the-real-aud/);
   assert.match(
     await text(await token({ iss: "https://other.cloudflareaccess.com" })),
-    /Set ACCESS_TEAM_DOMAIN to other\.cloudflareaccess\.com/,
+    /set ACCESS_TEAM_DOMAIN to "zinspector\.cloudflareaccess\.com, other\.cloudflareaccess\.com"/,
   );
+});
+
+test("after a team rename, accepts sign-ins under either listed name, checked with the team's keys", async () => {
+  // Access still stamps the old name, which no longer publishes keys: the current name's keys are used.
+  const e = { ...env(), ACCESS_TEAM_DOMAIN: `${TEAM}, old-name.cloudflareaccess.com` };
+  assert.equal((await call(e, await token({ iss: "https://old-name.cloudflareaccess.com" }))).status, 200);
+  assert.equal((await call(e, await token())).status, 200);
+  assert.equal((await call(e, await token({ iss: "https://evil.cloudflareaccess.com" }))).status, 403);
 });
 
 test("accepts settings pasted with https:// or stray spaces", async () => {

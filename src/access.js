@@ -2,10 +2,11 @@
 // every request it lets through, and returns the signed-in person's email.
 //
 // Settings: ACCESS_TEAM_DOMAIN (e.g. "zinspector.cloudflareaccess.com") and ACCESS_AUD (the Access
-// application's "Application Audience (AUD) Tag").
+// application's "Application Audience (AUD) Tag"). After a team rename, Access can keep signing people in
+// under the old name, so ACCESS_TEAM_DOMAIN may list both names, comma-separated.
 
 const KEY_CACHE_MS = 60 * 60 * 1000;
-let cache = { domain: null, at: 0, keys: [] };
+const cache = new Map(); // team domain -> { at, keys }
 
 export function accessConfigured(env) {
   return Boolean(env.ACCESS_TEAM_DOMAIN && env.ACCESS_AUD);
@@ -28,13 +29,21 @@ export async function accessCheck(request, env) {
   }
   if (header.alg !== "RS256") return { problem: "The sign-in token uses an unexpected signature type." };
 
-  const domain = teamDomain(env.ACCESS_TEAM_DOMAIN);
-  if (payload.iss !== `https://${domain}`) {
-    const issuer = String(payload.iss || "").replace(/^https:\/\//, "");
-    return { problem: `ACCESS_TEAM_DOMAIN is "${domain}", but this sign-in comes from "${issuer}". Set ACCESS_TEAM_DOMAIN to ${issuer} and deploy.` };
+  const domains = teamDomains(env.ACCESS_TEAM_DOMAIN);
+  const issuer = String(payload.iss || "").replace(/^https:\/\//, "");
+  if (!domains.includes(issuer)) {
+    const now = domains.join(", ");
+    return {
+      problem: `ACCESS_TEAM_DOMAIN is "${now}", but this sign-in comes from "${issuer}". If ${issuer} is your Cloudflare team, set ACCESS_TEAM_DOMAIN to "${now}, ${issuer}" and deploy.`,
+    };
   }
-  const jwk = await signingKey(domain, header.kid);
-  if (!jwk) return { problem: `Couldn't get Cloudflare Access's signing keys for "${domain}". Check ACCESS_TEAM_DOMAIN.` };
+  // The issuer's own keys first; a renamed team may only publish them under its other name.
+  let jwk = null;
+  for (const domain of [issuer, ...domains.filter((d) => d !== issuer)]) {
+    jwk = await signingKey(domain, header.kid);
+    if (jwk) break;
+  }
+  if (!jwk) return { problem: `Couldn't get Cloudflare Access's signing keys for "${domains.join(", ")}". Check ACCESS_TEAM_DOMAIN.` };
   const key = await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
   const signed = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
   if (!(await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, bytesFromBase64Url(parts[2]), signed))) {
@@ -56,19 +65,26 @@ export async function accessCheck(request, env) {
 }
 
 async function signingKey(domain, kid) {
-  const find = () => cache.keys.find((k) => k.kid === kid);
-  const fresh = cache.domain === domain && Date.now() - cache.at < KEY_CACHE_MS;
-  if (fresh && find()) return find();
+  const cached = cache.get(domain);
+  const find = () => cache.get(domain)?.keys.find((k) => k.kid === kid) || null;
+  if (cached && Date.now() - cached.at < KEY_CACHE_MS && find()) return find();
   // Unknown key id: Access may have rotated its keys, so fetch them again.
-  const res = await fetch(`https://${domain}/cdn-cgi/access/certs`);
-  if (!res.ok) return null;
-  const { keys = [] } = await res.json();
-  cache = { domain, at: Date.now(), keys };
-  return find() || null;
+  try {
+    const res = await fetch(`https://${domain}/cdn-cgi/access/certs`);
+    if (!res.ok) return null;
+    const { keys = [] } = await res.json();
+    cache.set(domain, { at: Date.now(), keys });
+  } catch {
+    return null;
+  }
+  return find();
 }
 
-function teamDomain(value) {
-  return String(value).trim().replace(/^https?:\/\//, "").replace(/\/+$/, "");
+function teamDomains(value) {
+  return String(value)
+    .split(",")
+    .map((d) => d.trim().replace(/^https?:\/\//, "").replace(/\/+$/, ""))
+    .filter(Boolean);
 }
 
 function bytesFromBase64Url(s) {
