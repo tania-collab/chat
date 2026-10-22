@@ -1,6 +1,8 @@
 // What a task looks like to the chat: its last known state, what changed since, and ready-made
 // template values ({{taskTitle}}, {{assignee}}, {{changes}}, ...).
 
+import { daysFromToday } from "./time.js";
+
 const PRIORITY = { 1: "Lowest", 2: "Low", 3: "Normal", 4: "High", 5: "Highest" };
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const SHORT_TEXT = 280;
@@ -67,7 +69,10 @@ export function taskExtras({ event, previous, kind, link, mentionOf }) {
     taskType: typeLabel,
     plainTitle: title,
     area: shortArea(data.propertyName),
-    managerName: firstName(text(data.manager)),
+    // No "from Tania" on a task Tania gave herself.
+    managerName: sameName(data.manager, now.assignee) ? "" : firstName(text(data.manager)),
+    dueLabel: dueLabel(now.due),
+    finishLabel: finishLabel(now.status, now.due),
     assigneeFirstName: firstName(now.assignee?.name),
     // The rest of the description, when the title above had to cut it short.
     descriptionMore: shorten(now.description, SHORT_TEXT) === title ? "" : shorten(now.description, SHORT_TEXT),
@@ -118,6 +123,35 @@ function formatDate(v) {
   if (!m) return "";
   const year = Number(m[1]) === new Date().getUTCFullYear() ? "" : `, ${m[1]}`;
   return `${MONTHS[Number(m[2]) - 1]} ${Number(m[3])}${year}`;
+}
+
+// "Due tomorrow", "Due in 3 days", "⚠️ Overdue by 2 days"; a date when it's more than a week away.
+function dueLabel(due) {
+  const days = daysFromToday(due);
+  if (days === null) return "";
+  if (days < 0) return `⚠️ Overdue by ${plural(-days, "day")}`;
+  if (days === 0) return "Due today";
+  if (days === 1) return "Due tomorrow";
+  if (days <= 6) return `Due in ${days} days`;
+  return `Due ${formatDate(due)}`;
+}
+
+// "Done · 2 days early", "Closed · on time", "Done · 3 days late"; just the status without a due date.
+function finishLabel(status, due) {
+  const word = /^work complete$/i.test(status) ? "Done" : status;
+  const days = daysFromToday(due);
+  if (days === null) return word;
+  const timing = days > 0 ? `${plural(days, "day")} early` : days === 0 ? "on time" : `${plural(-days, "day")} late`;
+  return [word, timing].filter(Boolean).join(" · ");
+}
+
+function plural(n, word) {
+  return `${n} ${word}${n === 1 ? "" : "s"}`;
+}
+
+function sameName(a, b) {
+  const key = (p) => (p ? String(p.email || p.name || "").toLowerCase().replace(/\+[^@]*(?=@)/, "") : "");
+  return Boolean(a && b) && key(a) === key(b);
 }
 
 // "Fri, Oct 30", or "today".

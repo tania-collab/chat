@@ -29,9 +29,7 @@ export function cardAsText({ title, topLabel, bottomLabel, description, link }) 
 
 // What a task card shows. A finished task says how it ended; due date and priority no longer matter then.
 export function cardContent(extras, kind, status) {
-  const details = kind === "task.completed"
-    ? [status]
-    : [extras.dueDate && `Due ${extras.dueDate}`, extras.priorityFlag];
+  const details = kind === "task.completed" ? [extras.finishLabel || status] : [extras.dueLabel, extras.priorityFlag];
   return {
     title: extras.plainTitle,
     topLabel: extras.area || extras.taskType,

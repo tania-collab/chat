@@ -61,6 +61,17 @@ The assignee is @mentioned on a new task, when a task is assigned to them, and o
 update. To tell what changed, the app remembers the last state of the 300 most recently seen tasks per chat.
 Messages still on an earlier default switch to the current one; edited messages stay as written.
 
+### The admin page
+
+- **Add a chat** (Google Chat or Slack) with a guided setup that ticks itself off: chat reached → link pasted in
+  zInspector → zInspector's test arrived.
+- Each chat shows its **health** at a glance ("✓ Last message 2 hours ago · New task: …", or what failed).
+- **Settings** per chat: which tasks, what to post, and the **wording**, edited with detail buttons ([Person],
+  [From], [Task title]…) and a live preview of the card.
+- **History** in plain words: what was posted, for which task and person, or why not.
+- **Send a test message** / **Send this week's digest**, and settings for all chats: the task link, the
+  "finished" statuses and people's chat ids for real @mentions.
+
 ### Message templates
 
 - `{{data.propertyName}}` puts in a value from the event; `{{data.status}}` shows a status's name, `{{data.assignedTo}}`
@@ -167,4 +178,6 @@ them in every account.
 | `src/digest.js` | the weekly digest |
 | `src/legacy.js` | earlier default copy, to move unedited messages forward |
 | `src/store.js` | connections, settings, logs and last events in KV, input checks |
-| `src/admin.js` | the admin page (HTML + JS) |
+| `src/admin.js` | the admin page (HTML + CSS) |
+| `src/admin-script.js` | the admin page's script |
+| `src/time.js` | dates in Pacific time |
