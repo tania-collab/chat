@@ -294,13 +294,21 @@ function cardPreview(text, card) {
         el("div", { "class": "grow" }, [
           card.topLabel ? el("div", { "class": "hint", text: ({ "task.created": "📄 ", "task.assigned": "👤 ", "task.completed": "⭐ " }[card.kind] || "") + card.topLabel }) : null,
           el("b", { text: card.title }),
-          card.bottomLabel ? el("div", { "class": "hint", text: card.bottomLabel }) : null
+          null
         ]),
         card.link ? el("span", { "class": "cc-button", text: "Open" }) : null
       ]),
+      card.detailsHtml ? details(card.detailsHtml) : null,
       card.description ? el("div", { "class": "cc-quote", text: "“" + card.description + "”" }) : null
     ])
   ]);
+}
+
+// The card's clock row. The server escapes the text and only adds <font color> tags.
+function details(html) {
+  var row = el("div", { "class": "cc-details" });
+  row.innerHTML = "🕒 " + html.replace(/<font color="(#[0-9a-f]{6})">/gi, "<span style=\"color:$1\">").replace(/<\/font>/g, "</span>");
+  return row;
 }
 
 // A rough look at chat formatting: *bold*, _italic_, <url|text>. Escapes everything first.
