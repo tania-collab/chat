@@ -26,16 +26,16 @@ export const EVENTS = [
     key: "task.created",
     label: "Task created",
     card: true,
-    unassigned: "New task · from {{managerName}}",
+    unassigned: "📌 New task{{fromManager?}}",
     hint: "the sentence above the card; {{assignee}} @mentions them when their chat id is on file",
-    template: "{{assignee}} has a new task · from {{managerName}}",
+    template: "📌 {{assignee}}, you've got a new task{{fromManager?}}",
   },
   {
     key: "task.assigned",
     label: "Task newly assigned",
     card: true,
     hint: "a Task updated that gave the task to someone; the sentence above the card",
-    template: "{{assignee}} was assigned a task · from {{managerName}}",
+    template: "👋 {{assignee}}, *{{shortTitle}}* is yours now",
   },
   {
     key: "task.updated",
@@ -47,9 +47,9 @@ export const EVENTS = [
     key: "task.completed",
     label: "Task completed",
     card: true,
-    unassigned: "🎉 A task was finished!",
+    unassigned: "🎉 *{{shortTitle}}* is done{{finishTiming?}}",
     hint: "a Task updated whose status just moved to a done status (once per task); the sentence above the card",
-    template: "🎉 {{assigneeFirstName}} finished a task!",
+    template: "🎉 {{assigneeFirstName}} wrapped up *{{shortTitle}}*{{finishTiming?}}",
   },
   {
     key: "task.message.created",
@@ -261,7 +261,8 @@ export function render(template, event, settings = {}, platform = "google-chat",
   const extras = extrasFor(event, settings, platform, previous, kind);
   const lookup = (path) => (Object.hasOwn(extras, path) ? extras[path] || "" : valueText(read(event, path)));
 
-  const fill = (part) => part.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, p) => lookup(p));
+  // {{name?}} is optional: when empty it just disappears instead of removing its part of the line.
+  const fill = (part) => part.replace(/\{\{\s*([\w.]+)\??\s*\}\}/g, (_, p) => lookup(p));
   const paths = (part) => [...part.matchAll(/\{\{\s*([\w.]+)\s*\}\}/g)].map((m) => m[1]);
   return String(template)
     .split("\n")

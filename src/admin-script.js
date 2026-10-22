@@ -18,7 +18,8 @@ var KIND_LABEL = {
 };
 // Message details as people say them; stored as {{codes}} the server understands.
 var DETAILS = [
-  ["Person", "assignee"], ["First name", "assigneeFirstName"], ["From", "managerName"], ["Task title", "taskTitle"],
+  ["Person", "assignee"], ["First name", "assigneeFirstName"], ["from Manager", "fromManager?"], ["Task title", "shortTitle"],
+  ["early / late", "finishTiming?"], ["From", "managerName"], ["Task title, linked", "taskTitle"],
   ["Area", "area"], ["Due date", "dueDate"], ["Priority", "priorityFlag"], ["Status", "data.status"],
   ["What changed", "changes"], ["Description", "descriptionMore"], ["Message", "messageText"],
   ["Message author", "messageAuthor"], ["Type", "taskType"], ["Property", "data.propertyName"],
@@ -51,11 +52,19 @@ function call(method, path, body) {
   });
 }
 
+// Optional details ({{name?}}) bring their own leading space when they have a value, so the box shows one too.
 function toFriendly(template) {
-  return DETAILS.reduce(function (t, d) { return t.split("{{" + d[1] + "}}").join("[" + d[0] + "]"); }, template || "");
+  return DETAILS.reduce(function (t, d) {
+    var optional = d[1].slice(-1) === "?";
+    return t.split("{{" + d[1] + "}}").join((optional ? " " : "") + "[" + d[0] + "]");
+  }, template || "");
 }
 function fromFriendly(text) {
-  return DETAILS.reduce(function (t, d) { return t.split("[" + d[0] + "]").join("{{" + d[1] + "}}"); }, text || "");
+  return DETAILS.reduce(function (t, d) {
+    var optional = d[1].slice(-1) === "?";
+    if (optional) t = t.split(" [" + d[0] + "]").join("{{" + d[1] + "}}");
+    return t.split("[" + d[0] + "]").join("{{" + d[1] + "}}");
+  }, text || "");
 }
 
 // "just now", "5 minutes ago", "2 hours ago", "3 days ago".
@@ -228,7 +237,7 @@ function openForm(c) {
   templates = {};
   state.events.forEach(function (e) { templates[e.key] = c && c.templates && c.templates[e.key] != null ? c.templates[e.key] : e.template; });
   $("f-event").replaceChildren.apply($("f-event"), state.events.map(function (e) { return el("option", { value: e.key, text: e.label }); }));
-  $("f-details").replaceChildren.apply($("f-details"), DETAILS.slice(0, 12).map(function (d) {
+  $("f-details").replaceChildren.apply($("f-details"), DETAILS.slice(0, 14).map(function (d) {
     return el("button", { type: "button", text: d[0], on: { click: function () { insertText("[" + d[0] + "]"); } } });
   }));
   $("formMsg").textContent = "";
@@ -283,7 +292,7 @@ function cardPreview(text, card) {
     el("div", { "class": "chatcard" }, [
       el("div", { "class": "cc-row" }, [
         el("div", { "class": "grow" }, [
-          card.topLabel ? el("div", { "class": "hint", text: card.topLabel }) : null,
+          card.topLabel ? el("div", { "class": "hint", text: ({ "task.created": "📄 ", "task.assigned": "👤 ", "task.completed": "⭐ " }[card.kind] || "") + card.topLabel }) : null,
           el("b", { text: card.title }),
           card.bottomLabel ? el("div", { "class": "hint", text: card.bottomLabel }) : null
         ]),

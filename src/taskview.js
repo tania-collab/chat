@@ -68,6 +68,11 @@ export function taskExtras({ event, previous, kind, link, mentionOf }) {
     taskTitle: link ? `<${link}|${linkText}>` : `*${title}*`,
     taskType: typeLabel,
     plainTitle: title,
+    shortTitle: shorten(title, 50),
+    // " from Tania", for {{fromManager?}}; empty when there's no manager or they gave it to themselves.
+    fromManager: sameName(data.manager, now.assignee) || !text(data.manager) ? "" : ` from ${firstName(text(data.manager))}`,
+    // " — 2 days early 🚀", " — right on time ✅", " — 1 day late"; empty without a due date.
+    finishTiming: finishTiming(now.due),
     area: shortArea(data.propertyName),
     // No "from Tania" on a task Tania gave herself.
     managerName: sameName(data.manager, now.assignee) ? "" : firstName(text(data.manager)),
@@ -90,7 +95,7 @@ export function taskExtras({ event, previous, kind, link, mentionOf }) {
 }
 
 export const EXTRA_NAMES = [
-  "taskTitle", "taskType", "descriptionMore", "managerName", "area", "assigneeFirstName", "assignee", "assigneeOrUnassigned", "changes", "dueDate", "priorityFlag",
+  "taskTitle", "shortTitle", "fromManager", "finishTiming", "taskType", "descriptionMore", "managerName", "area", "assigneeFirstName", "assignee", "assigneeOrUnassigned", "changes", "dueDate", "priorityFlag",
   "shortDescription", "messageText", "messageAuthor", "previousStatus", "taskLink", "mention",
 ];
 
@@ -134,6 +139,14 @@ function dueLabel(due) {
   if (days === 1) return "Due tomorrow";
   if (days <= 6) return `Due in ${days} days`;
   return `Due ${formatDate(due)}`;
+}
+
+function finishTiming(due) {
+  const days = daysFromToday(due);
+  if (days === null) return "";
+  if (days > 0) return ` — ${plural(days, "day")} early 🚀`;
+  if (days === 0) return " — right on time ✅";
+  return ` — ${plural(-days, "day")} late`;
 }
 
 // "Done · 2 days early", "Closed · on time", "Done · 3 days late"; just the status without a due date.

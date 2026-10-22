@@ -7,16 +7,17 @@ has its own address that you paste as the **Destination URL** of a zInspector we
 which events it sends (events and filters are set on its Edit Webhook screen); the app checks the webhook
 token, writes the message for that event, and posts it to the connection's chat.
 
-New, newly assigned and finished tasks arrive in Google Chat as a sentence about the person plus one compact
-card:
+New, newly assigned and finished tasks arrive in Google Chat as a friendly sentence plus one compact card:
 
 ```
-@AJ Muldowney has a new task · from Tania        ← the message (editable per chat)
+📌 @Nour B, you've got a new task from Tania      ← the message (editable per chat)
 ┌──────────────────────────────────────────┐
-│ BizDev / Strategic                       │     ← area
-│ Marketing Inbox test              [Open] │     ← the task's title (its description)
-│ Due Sat, Oct 24                          │     ← due date, priority if not normal
+│ 📄 Conferences                           │     ← icon per kind of alert, then the area
+│    Marketing Inbox                [Open] │     ← the task's title (its description)
+│    No due date yet                       │     ← due in words, priority if not normal
 └──────────────────────────────────────────┘
+👋 @Tim, Booth logistics is yours now
+🎉 Nour B wrapped up Marketing Inbox — 2 days early 🚀
 ```
 
 The person is @mentioned (which notifies them) on a new task or a task just given to them, when their Google
@@ -25,9 +26,9 @@ Other alerts are short text messages:
 
 | zInspector event | Message |
 |---|---|
-| Task created | "@Tim Wallace has a new task · from Laura" + card |
-| Task updated that gives the task to someone | "@Tim Wallace was assigned a task · from Laura" + card |
-| Task updated into a "done" status | "🎉 Tim finished a task!" + card with how it ended (Work Complete / Closed) |
+| Task created | "📌 @Tim Wallace, you've got a new task from Laura" + card |
+| Task updated that gives the task to someone | "👋 @Tim Wallace, *Booth logistics* is yours now" + card |
+| Task updated into a "done" status | "🎉 Tim wrapped up *Booth logistics* — 2 days early 🚀" + card (Done / Closed) |
 | Other task updates (off by default) | ✏️ task · then only what changed: `Status: New → In Progress`, `Due: Nov 2`… |
 | New task message (off by default) | 💬 *New message* · task; the first lines of the message, without signature; its author |
 | Reports distributed | 📄 *Report sent* · property · Ref |
@@ -78,7 +79,9 @@ Messages still on an earlier default switch to the current one; edited messages 
   a person's name.
 - Ready-made values: `{{assigneeFirstName}}`, `{{managerName}}`, `{{area}}`, `{{taskTitle}}` (the task's title, i.e. its description, linked), `{{taskType}}`, `{{descriptionMore}}`, `{{assignee}}`, `{{assigneeOrUnassigned}}`, `{{changes}}`,
   `{{dueDate}}`, `{{priorityFlag}}`, `{{shortDescription}}`, `{{messageText}}`, `{{messageAuthor}}`, `{{taskLink}}`.
-- A line, or a part of a line between ` · `, is left out when one of its fields is empty.
+- A line, or a part of a line between ` · `, is left out when one of its fields is empty. An optional field,
+  `{{name?}}`, just disappears when empty (used for `{{fromManager?}}` " from Tania" and `{{finishTiming?}}`
+  " — 2 days early 🚀").
 - Formatting: `*bold*`, `_italic_`, `<https://link|text>`.
 
 The default copy for New task message and Reports distributed guesses some field names (`data.message`),

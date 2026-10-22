@@ -17,11 +17,11 @@ const update = (data) => ({ ...created, type: "task.updated", data: { ...created
 test("a new task is a sentence about the person, then one compact block with the task and an Open button", () => {
   const event = { ...created, data: { ...created.data, endDate: inDays(2), priority: 4, manager: { name: "Laura E." }, description: "Book the booth\nand send the attendee list" } };
   const payload = buildPayload(event, gchat, withLink);
-  assert.equal(payload.text, "*Tania Aquirre* has a new task · from Laura");
+  assert.equal(payload.text, "📌 *Tania Aquirre*, you've got a new task from Laura");
   assert.deepEqual(payload.cardsV2[0].card, {
     sections: [{ widgets: [
       { decoratedText: {
-        text: "<b>Book the booth</b>", wrapText: true, topLabel: "Conferences", bottomLabel: "Due in 2 days · 🔺 High priority",
+        text: "<b>Book the booth</b>", wrapText: true, startIcon: { knownIcon: "DESCRIPTION" }, topLabel: "Conferences", bottomLabel: "Due in 2 days · 🔺 High priority",
         button: { text: "Open", onClick: { openLink: { url: "https://dashboard.zinspector.com/task/view/2160012" } } },
       } },
       { textParagraph: { text: "<i>“Book the booth and send the attendee list”</i>" } },
@@ -32,18 +32,18 @@ test("a new task is a sentence about the person, then one compact block with the
 test("Slack gets the same message as text", () => {
   const payload = buildPayload(created, { ...gchat, platform: "slack" }, withLink);
   assert.equal(payload.cardsV2, undefined);
-  assert.equal(payload.text, "*Tania Aquirre* has a new task\n*<https://dashboard.zinspector.com/task/view/2160012|test task>*\nConferences");
+  assert.equal(payload.text, "📌 *Tania Aquirre*, you've got a new task\n*<https://dashboard.zinspector.com/task/view/2160012|test task>*\nConferences · No due date yet");
 });
 
-test("a new task with nobody on it (for chats that get all tasks) still reads well, without normal priority or missing dates", () => {
+test("a new task with nobody on it (for chats that get all tasks) still reads well, and nudges for a due date", () => {
   const payload = buildPayload({ ...created, data: { ...created.data, assignedTo: null, manager: { name: "Laura E." } } }, { ...gchat, only: "all" });
-  assert.equal(payload.text, "New task · from Laura");
-  assert.equal(block(payload).bottomLabel, undefined);
+  assert.equal(payload.text, "📌 New task from Laura");
+  assert.equal(block(payload).bottomLabel, "No due date yet");
 });
 
 test("names a vendor when the task is assigned to a contact", () => {
   const event = { ...created, data: { ...created.data, assignedTo: null, assignedToContact: { name: "Acme Painting" } } };
-  assert.equal(buildMessage(event, gchat), "*Acme Painting* has a new task");
+  assert.equal(buildMessage(event, gchat), "📌 *Acme Painting*, you've got a new task");
 });
 
 test("an update lists only what changed", () => {
@@ -117,8 +117,8 @@ test("doesn't mistake built-in object names for fields", () => {
 test("mentions in the chat app's own syntax, matching emails with or without a +tag", () => {
   const settings = { people: [{ email: "Tania@zInspector.com", googleChatId: "1234", slackId: "U99" }] };
   const tagged = { ...created, data: { ...created.data, assignedTo: { name: "T", email: "tania+onsight@zinspector.com" } } };
-  assert.equal(buildPayload(tagged, gchat, settings).text, "<users/1234> has a new task");
-  assert.match(buildPayload(tagged, { ...gchat, platform: "slack" }, settings).text, /^<@U99> has a new task\n/);
+  assert.equal(buildPayload(tagged, gchat, settings).text, "📌 <users/1234>, you've got a new task");
+  assert.match(buildPayload(tagged, { ...gchat, platform: "slack" }, settings).text, /^📌 <@U99>, you've got a new task\n/);
 });
 
 test("lists an event's fields for the template helper", () => {
@@ -152,14 +152,15 @@ test("a finished task's card says how it ended", () => {
   const before = snapshotOf({ ...created.data, status: { value: "In Progress" } });
   const payload = buildPayload(withStatus("Work Complete"), gchat, {}, before);
   const settings = { people: [{ email: "tania@zinspector.com", googleChatId: "1234" }] };
-  assert.equal(buildPayload(withStatus("Work Complete"), gchat, settings, before).text, "🎉 Tania finished a task!"); // no ping for finishing
+  assert.equal(buildPayload(withStatus("Work Complete"), gchat, settings, before).text, "🎉 Tania wrapped up *test task*"); // no ping
   assert.equal(block(payload).bottomLabel, "Done");
 });
 
 test("a task given to someone is a newly assigned alert", () => {
   const event = update({ assignedTo: { name: "Tim Wallace" }, manager: { name: "Laura E." } });
   assert.equal(eventKind(event, {}, snapshotOf(created.data)), "task.assigned");
-  assert.equal(buildPayload(event, gchat, {}, snapshotOf(created.data)).text, "*Tim Wallace* was assigned a task · from Laura");
+  assert.equal(buildPayload(event, gchat, {}, snapshotOf(created.data)).text, "👋 *Tim Wallace*, *test task* is yours now");
+  assert.equal(block(buildPayload(event, gchat, {}, snapshotOf(created.data))).startIcon.knownIcon, "PERSON");
 });
 
 test("says when a task is due in words, and flags overdue ones", () => {
@@ -170,21 +171,27 @@ test("says when a task is due in words, and flags overdue ones", () => {
   assert.equal(due(-1), "⚠️ Overdue by 1 day");
   assert.equal(due(-3), "⚠️ Overdue by 3 days");
   assert.match(due(10), /^Due [A-Z][a-z]{2} \d+/);
-  assert.equal(due(null), undefined);
+  assert.equal(due(null), "No due date yet");
 });
 
-test("a finished task says whether it was early, on time or late", () => {
+test("a finished task cheers when it's early or on time, and says when it's late", () => {
   const done = (n, status = "Work Complete") => {
     const data = { ...created.data, endDate: inDays(n) };
     const before = snapshotOf({ ...data, status: { value: "In Progress" } });
-    return block(buildPayload({ ...created, type: "task.updated", data: { ...data, status: { value: status } } }, gchat, {}, before)).bottomLabel;
+    const payload = buildPayload({ ...created, type: "task.updated", data: { ...data, status: { value: status } } }, gchat, {}, before);
+    return [payload.text, block(payload).bottomLabel];
   };
-  assert.equal(done(2), "Done · 2 days early");
-  assert.equal(done(0), "Done · on time");
-  assert.equal(done(-1, "Closed"), "Closed · 1 day late");
+  assert.deepEqual(done(2), ["🎉 Tania wrapped up *test task* — 2 days early 🚀", "Done"]);
+  assert.deepEqual(done(0), ["🎉 Tania wrapped up *test task* — right on time ✅", "Done"]);
+  assert.deepEqual(done(-1, "Closed"), ["🎉 Tania wrapped up *test task* — 1 day late", "Closed"]);
+});
+
+test("an optional detail disappears when empty, without taking its line with it", () => {
+  assert.equal(render("Hi{{data.who?}}!", { type: "x", data: {} }), "Hi!");
+  assert.equal(render("Hi {{data.who?}}!", { type: "x", data: { who: "Tim" } }), "Hi Tim!");
 });
 
 test("doesn't say who a task is from when they gave it to themselves", () => {
   const self = { ...created, data: { ...created.data, manager: { name: "Tania Aquirre", email: "tania+onsight@zinspector.com" } } };
-  assert.equal(buildMessage(self, gchat), "*Tania Aquirre* has a new task");
+  assert.equal(buildMessage(self, gchat), "📌 *Tania Aquirre*, you've got a new task");
 });
