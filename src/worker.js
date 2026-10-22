@@ -124,7 +124,7 @@ async function sendDigest(env, connection) {
     headers: { "Content-Type": "application/json; charset=UTF-8" },
     body: JSON.stringify(payload),
   });
-  const entry = logEntry("digest", event, { ok: res.ok, status: res.status, body: await res.text() });
+  const entry = logEntry("digest", event, { ok: res.ok, status: res.status, body: await res.text() }, "app");
   await saveActivity(env.RELAY, connection.id, await getActivity(env.RELAY, connection.id), { entry, kind: "test", event });
   return { ok: entry.ok, status: entry.status, detail: entry.detail };
 }
@@ -139,13 +139,28 @@ async function postToChat(connection, event, payload) {
   return { ok: res.ok, status: res.status, body: await res.text() };
 }
 
-function logEntry(kind, event, result) {
+// For the chat's card: the last message posted (or failed), and whether zInspector has reached the chat yet.
+function health(entries) {
+  const last = entries.find((e) => !e.skipped) || null;
+  return {
+    last: last && { at: last.at, ok: last.ok, status: last.status, detail: last.detail, kind: last.kind, title: last.title || "" },
+    chatReached: entries.some((e) => !e.skipped && e.ok),
+    zinspectorReached: entries.some((e) => e.source !== "app"),
+  };
+}
+
+// `source` is "app" for what the app sends by itself (test message, digest); zInspector's events have none.
+function logEntry(kind, event, result, source = null) {
+  const person = event.data?.assignedTo || event.data?.assignedToContact;
   return {
     at: new Date().toISOString(),
     kind,
     type: event.type,
+    source,
     taskId: event.data?.id ?? null,
     ref: event.data?.referenceNumber || null,
+    title: String(event.data?.description || "").split("\n")[0].slice(0, 120),
+    person: person ? String(person.name ?? person) : "",
     ok: result.ok,
     skipped: result.skipped || false,
     status: result.status,
@@ -161,11 +176,14 @@ async function api(request, env, url, user) {
   if (parts[1] === "state" && method === "GET") {
     return json({
       // Messages still on an earlier default show (and save) as the current default.
-      connections: (await getConnections(kv)).map((c) => ({
-        ...c,
-        templates: Object.fromEntries(EVENTS.map((e) => [e.key, templateFor(c, e.key)])),
-        alerts: alertsOf(c),
-      })),
+      connections: await Promise.all(
+        (await getConnections(kv)).map(async (c) => ({
+          ...c,
+          templates: Object.fromEntries(EVENTS.map((e) => [e.key, templateFor(c, e.key)])),
+          alerts: alertsOf(c),
+          health: health((await getActivity(kv, c.id)).entries),
+        })),
+      ),
       settings: await getSettings(kv),
       hookBase: `${url.origin}/hook/`,
       user: user.email,
@@ -234,7 +252,7 @@ async function api(request, env, url, user) {
   if (parts[3] === "test" && method === "POST") {
     const event = { type: "webhook.test" };
     const result = await postToChat(existing, event, { text: TEST_MESSAGE });
-    const entry = logEntry("test", event, result);
+    const entry = logEntry("test", event, result, "app");
     await saveActivity(kv, id, await getActivity(kv, id), { entry, kind: "test", event });
     return json({ ok: entry.ok, status: entry.status, detail: entry.detail });
   }

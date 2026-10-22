@@ -288,3 +288,18 @@ test("by default a chat gets new, newly assigned and finished tasks, not other c
   const log = await (await admin(env, "GET", `/api/connections/${c.id}/log`)).json();
   assert.equal(log.filter((e) => e.skipped === "alert-off").length, 2);
 });
+
+test("each chat shows its health: last message, and whether Google Chat and zInspector have been reached", async () => {
+  const env = makeEnv();
+  const c = await addConnection(env);
+  const health = async () => (await (await admin(env, "GET", "/api/state")).json()).connections[0].health;
+  assert.deepEqual(await health(), { last: null, chatReached: false, zinspectorReached: false });
+  await withChat(200, () => admin(env, "POST", `/api/connections/${c.id}/test`));
+  assert.deepEqual([(await health()).chatReached, (await health()).zinspectorReached], [true, false]);
+  await withChat(400, () => hook(env, c.id, created, "secret-1"));
+  const h = await health();
+  assert.equal(h.zinspectorReached, true);
+  assert.deepEqual([h.last.ok, h.last.status, h.last.title], [false, 400, "test task"]);
+  const log = await (await admin(env, "GET", `/api/connections/${c.id}/log`)).json();
+  assert.deepEqual([log[0].title, log[0].person, log[1].source], ["test task", "Tania Aquirre", "app"]);
+});

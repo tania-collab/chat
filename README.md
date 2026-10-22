@@ -167,4 +167,6 @@ them in every account.
 | `src/digest.js` | the weekly digest |
 | `src/legacy.js` | earlier default copy, to move unedited messages forward |
 | `src/store.js` | connections, settings, logs and last events in KV, input checks |
-| `src/admin.js` | the admin page (HTML + JS) |
+| `src/admin.js` | the admin page (HTML + CSS) |
+| `src/admin-script.js` | the admin page's script |
+| `src/time.js` | dates in Pacific time |
