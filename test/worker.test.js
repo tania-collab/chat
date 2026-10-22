@@ -54,7 +54,7 @@ test("relays a new task to the connection's chat and logs it", async () => {
     assert.equal(res.status, 200);
     assert.equal(calls.length, 1);
     assert.ok(calls[0].url.startsWith("https://chat.googleapis.com/v1/spaces/AAA/messages"));
-    assert.equal(calls[0].body.text, "*Tania Aquirre* has a new task");
+    assert.equal(calls[0].body.text, "📌 *Tania Aquirre*, you've got a new task");
   });
   const log = await (await admin(env, "GET", `/api/connections/${c.id}/log`)).json();
   assert.deepEqual([log[0].kind, log[0].ref, log[0].ok], ["task.created", "313307", true]);
@@ -72,7 +72,7 @@ test("posts each update with only what changed, and skips updates that changed n
     await hook(env, c.id, { type: "zdata.changed", data: { area: "Account", detail: "Notes", actionType: "Updated" } }, "secret-1");
     assert.equal(calls.length, 4);
     assert.match(calls[1].body.text, /• Status: New → \*In Progress\*$/);
-    assert.equal(calls[2].body.text, "🎉 Tania finished a task!");
+    assert.equal(calls[2].body.text, "🎉 Tania wrapped up *test task*");
     assert.match(calls[3].body.text, /^🗂️ \*Account › Notes\* Updated/);
   });
   const log = await (await admin(env, "GET", `/api/connections/${c.id}/log`)).json();
@@ -171,7 +171,7 @@ test("people saved in settings are @mentioned on a new task, not on every update
   await withChat(200, async (calls) => {
     await hook(env, c.id, created, "secret-1");
     await hook(env, c.id, withStatus("In Progress"), "secret-1");
-    assert.equal(calls[0].body.text, "<users/555> has a new task");
+    assert.equal(calls[0].body.text, "📌 <users/555>, you've got a new task");
     assert.doesNotMatch(calls[1].body.text, /users\/555/);
   });
 });
@@ -245,11 +245,11 @@ test("messages saved with the old default copy move to the new one; edited ones 
   await withChat(200, async (calls) => {
     await hook(env, c.id, created, "secret-1");
     await hook(env, c.id, withStatus("In Progress"), "secret-1");
-    assert.equal(calls[0].body.text, "*Tania Aquirre* has a new task");
+    assert.equal(calls[0].body.text, "📌 *Tania Aquirre*, you've got a new task");
     assert.equal(calls[1].body.text, "Mine: In Progress");
   });
   const state = await (await admin(env, "GET", "/api/state")).json();
-  assert.equal(state.connections[0].templates["task.created"], "{{assignee}} has a new task · from {{managerName}}");
+  assert.equal(state.connections[0].templates["task.created"], "📌 {{assignee}}, you've got a new task{{fromManager?}}");
 });
 
 test("settings saved with the old defaults move to zInspector's statuses and task link", async () => {
@@ -282,7 +282,7 @@ test("by default a chat gets new, newly assigned and finished tasks, not other c
     await hook(env, c.id, { ...unassigned, type: "task.updated", data: { ...unassigned.data, assignedTo: { name: "Tim Wallace" } } }, "secret-1"); // newly assigned: posted
     assert.deepEqual(
       calls.map((call) => call.body.text),
-      ["*Tania Aquirre* has a new task", "🎉 Tania finished a task!", "*Tim Wallace* was assigned a task"],
+      ["📌 *Tania Aquirre*, you've got a new task", "🎉 Tania wrapped up *test task*", "👋 *Tim Wallace*, *test task* is yours now"],
     );
   });
   const log = await (await admin(env, "GET", `/api/connections/${c.id}/log`)).json();

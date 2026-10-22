@@ -8,8 +8,12 @@
 
 const DESCRIPTION_MAX = 220;
 
-export function taskCard({ title, topLabel, bottomLabel, description, link }) {
+// Google Chat's built-in icons, one per kind of alert, so the card has something to anchor the eye.
+const ICON = { "task.created": "DESCRIPTION", "task.assigned": "PERSON", "task.completed": "STAR" };
+
+export function taskCard({ kind, title, topLabel, bottomLabel, description, link }) {
   const item = { text: `<b>${escapeHtml(title)}</b>`, wrapText: true };
+  if (ICON[kind]) item.startIcon = { knownIcon: ICON[kind] };
   if (topLabel) item.topLabel = topLabel;
   if (bottomLabel) item.bottomLabel = bottomLabel;
   if (link) item.button = { text: "Open", onClick: { openLink: { url: link } } };
@@ -29,8 +33,13 @@ export function cardAsText({ title, topLabel, bottomLabel, description, link }) 
 
 // What a task card shows. A finished task says how it ended; due date and priority no longer matter then.
 export function cardContent(extras, kind, status) {
-  const details = kind === "task.completed" ? [extras.finishLabel || status] : [extras.dueLabel, extras.priorityFlag];
+  // A finished task's card just says how it ended (the sentence above says early / late); an open task
+  // without a due date says so, as a nudge.
+  const details = kind === "task.completed"
+    ? [/^work complete$/i.test(status) ? "Done" : status]
+    : [extras.dueLabel || "No due date yet", extras.priorityFlag];
   return {
+    kind,
     title: extras.plainTitle,
     topLabel: extras.area || extras.taskType,
     bottomLabel: details.filter(Boolean).join(" · "),
