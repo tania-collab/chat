@@ -126,6 +126,10 @@ The page shows who is signed in, and each chat shows who added it.
 Open the app: you get Cloudflare's sign-in page, then the app with "Signed in as …" at the top.
 To remove someone, take them off the policy in step 2.
 
+**Renamed your Zero Trust team?** Access can keep signing people in under the old name for a while. If the
+app says "this sign-in comes from …", list both names: `ACCESS_TEAM_DOMAIN` =
+`new-name.cloudflareaccess.com, old-name.cloudflareaccess.com`.
+
 The app checks Cloudflare's sign-in itself, so if Access is ever switched off the page refuses everyone
 rather than opening up.
 
