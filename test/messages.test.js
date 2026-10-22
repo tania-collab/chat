@@ -12,6 +12,11 @@ const ALL_ALERTS = { created: true, assigned: true, completed: true, changes: tr
 const gchat = { platform: "google-chat", chatUrl: GCHAT_URL, templates: defaultTemplates(), alerts: ALL_ALERTS };
 const withLink = { taskUrl: DEFAULT_TASK_URL };
 const block = (payload) => payload.cardsV2[0].card.sections[0].widgets[0].decoratedText;
+// The card's clock row (due date and priority, or how a finished task ended), without its color tags.
+const detailsOf = (payload) => {
+  const row = payload.cardsV2[0].card.sections[0].widgets.find((w) => w.decoratedText?.startIcon?.knownIcon === "CLOCK");
+  return row.decoratedText.text.replace(/<\/?font[^>]*>/g, "");
+};
 const update = (data) => ({ ...created, type: "task.updated", data: { ...created.data, ...data } });
 
 test("a new task is a sentence about the person, then one compact block with the task and an Open button", () => {
@@ -21,9 +26,10 @@ test("a new task is a sentence about the person, then one compact block with the
   assert.deepEqual(payload.cardsV2[0].card, {
     sections: [{ widgets: [
       { decoratedText: {
-        text: "<b>Book the booth</b>", wrapText: true, startIcon: { knownIcon: "DESCRIPTION" }, topLabel: "Conferences", bottomLabel: "Due in 2 days · 🔺 High priority",
+        text: "<b>Book the booth</b>", wrapText: true, startIcon: { knownIcon: "DESCRIPTION" }, topLabel: "Conferences",
         button: { text: "Open", onClick: { openLink: { url: "https://dashboard.zinspector.com/task/view/2160012" } } },
       } },
+      { decoratedText: { startIcon: { knownIcon: "CLOCK" }, text: 'Due in 2 days · <font color="#e8710a">High priority</font>', wrapText: true } },
       { textParagraph: { text: "<i>“Book the booth and send the attendee list”</i>" } },
     ] }],
   });
@@ -32,13 +38,13 @@ test("a new task is a sentence about the person, then one compact block with the
 test("Slack gets the same message as text", () => {
   const payload = buildPayload(created, { ...gchat, platform: "slack" }, withLink);
   assert.equal(payload.cardsV2, undefined);
-  assert.equal(payload.text, "📌 *Tania Aquirre*, you've got a new task\n*<https://dashboard.zinspector.com/task/view/2160012|test task>*\nConferences · No due date yet");
+  assert.equal(payload.text, "📌 *Tania Aquirre*, you've got a new task\n*<https://dashboard.zinspector.com/task/view/2160012|test task>*\nConferences · No due date yet · Normal priority");
 });
 
 test("a new task with nobody on it (for chats that get all tasks) still reads well, and nudges for a due date", () => {
   const payload = buildPayload({ ...created, data: { ...created.data, assignedTo: null, manager: { name: "Laura E." } } }, { ...gchat, only: "all" });
   assert.equal(payload.text, "📌 New task from Laura");
-  assert.equal(block(payload).bottomLabel, "No due date yet");
+  assert.equal(detailsOf(payload), "No due date yet · Normal priority");
 });
 
 test("names a vendor when the task is assigned to a contact", () => {
@@ -142,7 +148,7 @@ test("a long title is cut on the card, the full description is quoted, and link-
   const { widgets } = buildPayload(event, gchat, withLink).cardsV2[0].card.sections[0];
   const bold = widgets[0].decoratedText.text;
   assert.ok(bold.endsWith("…</b>") && !bold.includes("<Anchored"), bold);
-  assert.equal(widgets[1].textParagraph.text, `<i>“${description.replace("<", "&lt;").replace(">", "&gt;")}”</i>`);
+  assert.equal(widgets[2].textParagraph.text, `<i>“${description.replace("<", "&lt;").replace(">", "&gt;")}”</i>`);
   const update = { ...event, type: "task.updated", data: { ...event.data, status: { value: "In Progress" } } };
   const label = buildMessage(update, gchat, withLink, snapshotOf(event.data)).match(/\|(.+)>/)[1];
   assert.ok(!/[<>|]/.test(label), label);
@@ -153,7 +159,7 @@ test("a finished task's card says how it ended", () => {
   const payload = buildPayload(withStatus("Work Complete"), gchat, {}, before);
   const settings = { people: [{ email: "tania@zinspector.com", googleChatId: "1234" }] };
   assert.equal(buildPayload(withStatus("Work Complete"), gchat, settings, before).text, "🎉 Tania wrapped up *test task*"); // no ping
-  assert.equal(block(payload).bottomLabel, "Done");
+  assert.equal(detailsOf(payload), "✓ Done");
 });
 
 test("a task given to someone is a newly assigned alert", () => {
@@ -164,14 +170,20 @@ test("a task given to someone is a newly assigned alert", () => {
 });
 
 test("says when a task is due in words, and flags overdue ones", () => {
-  const due = (n) => block(buildPayload({ ...created, data: { ...created.data, endDate: n === null ? null : inDays(n) } }, gchat)).bottomLabel;
+  const payloadDue = (n, priority = 3) => buildPayload({ ...created, data: { ...created.data, priority, endDate: n === null ? null : inDays(n) } }, gchat);
+  const due = (n) => detailsOf(payloadDue(n)).replace(" · Normal priority", "");
   assert.equal(due(0), "Due today");
   assert.equal(due(1), "Due tomorrow");
   assert.equal(due(5), "Due in 5 days");
-  assert.equal(due(-1), "⚠️ Overdue by 1 day");
-  assert.equal(due(-3), "⚠️ Overdue by 3 days");
+  assert.equal(due(-1), "Overdue by 1 day");
+  assert.equal(due(-3), "Overdue by 3 days");
   assert.match(due(10), /^Due [A-Z][a-z]{2} \d+/);
   assert.equal(due(null), "No due date yet");
+  // Colors carry the urgency: red overdue and highest priority, amber soon, orange high, grey not set.
+  const html = (n, p) => payloadDue(n, p).cardsV2[0].card.sections[0].widgets[1].decoratedText.text;
+  assert.equal(html(-1, 5), '<font color="#d93025">Overdue by 1 day</font> · <font color="#d93025">Highest priority</font>');
+  assert.equal(html(1, 4), '<font color="#e37400">Due tomorrow</font> · <font color="#e8710a">High priority</font>');
+  assert.equal(html(null, 3), '<font color="#5f6368">No due date yet</font> · <font color="#5f6368">Normal priority</font>');
 });
 
 test("a finished task cheers when it's early or on time, and says when it's late", () => {
@@ -179,11 +191,11 @@ test("a finished task cheers when it's early or on time, and says when it's late
     const data = { ...created.data, endDate: inDays(n) };
     const before = snapshotOf({ ...data, status: { value: "In Progress" } });
     const payload = buildPayload({ ...created, type: "task.updated", data: { ...data, status: { value: status } } }, gchat, {}, before);
-    return [payload.text, block(payload).bottomLabel];
+    return [payload.text, detailsOf(payload)];
   };
-  assert.deepEqual(done(2), ["🎉 Tania wrapped up *test task* — 2 days early 🚀", "Done"]);
-  assert.deepEqual(done(0), ["🎉 Tania wrapped up *test task* — right on time ✅", "Done"]);
-  assert.deepEqual(done(-1, "Closed"), ["🎉 Tania wrapped up *test task* — 1 day late", "Closed"]);
+  assert.deepEqual(done(2), ["🎉 Tania wrapped up *test task* — 2 days early 🚀", "✓ Done · 2 days early"]);
+  assert.deepEqual(done(0), ["🎉 Tania wrapped up *test task* — right on time ✅", "✓ Done · on time"]);
+  assert.deepEqual(done(-1, "Closed"), ["🎉 Tania wrapped up *test task* — 1 day late", "✓ Closed · 1 day late"]);
 });
 
 test("an optional detail disappears when empty, without taking its line with it", () => {

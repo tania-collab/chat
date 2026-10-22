@@ -63,6 +63,7 @@ export const ADMIN_HTML = String.raw`<!doctype html>
   .chatcard { border: 1px solid var(--line); border-radius: 12px; background: var(--card); overflow: hidden; }
   .cc-row { display: flex; gap: 12px; align-items: center; padding: 10px 12px; }
   .cc-quote { font-style: italic; padding: 0 12px 10px; }
+  .cc-details { padding: 0 12px 10px; font-size: 14px; }
   .cc-button { border: 1px solid var(--line); border-radius: 999px; padding: 4px 14px; color: var(--accent); font-weight: 500; }
   .fields { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
   .fields button { font: 12px ui-monospace, Menlo, monospace; padding: 2px 8px; border-radius: 999px; background: var(--chip); }

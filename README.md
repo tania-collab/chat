@@ -14,14 +14,16 @@ New, newly assigned and finished tasks arrive in Google Chat as a friendly sente
 ┌──────────────────────────────────────────┐
 │ 📄 Conferences                           │     ← icon per kind of alert, then the area
 │    Marketing Inbox                [Open] │     ← the task's title (its description)
-│    No due date yet                       │     ← due in words, priority if not normal
+│ 🕒 Due tomorrow · High priority          │     ← always shown, colored by urgency
 └──────────────────────────────────────────┘
 👋 @Tim, Booth logistics is yours now
 🎉 Nour B wrapped up Marketing Inbox — 2 days early 🚀
 ```
 
-The person is @mentioned (which notifies them) on a new task or a task just given to them, when their Google
-Chat id is on file (People). Finished tasks name them without a ping. Slack gets the same message as text.
+The clock row always shows the due date and priority ("No due date yet · Normal priority" when not set), in
+red for overdue and highest priority, orange for high, amber for due today or tomorrow, grey when not set; a
+finished task shows "✓ Done · 2 days early" in green. The person is @mentioned (which notifies them) on a new
+task or a task just given to them, when their Google Chat id is on file (People). Finished tasks name them without a ping. Slack gets the same message as text.
 Other alerts are short text messages:
 
 | zInspector event | Message |

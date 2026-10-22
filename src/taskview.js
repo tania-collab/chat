@@ -77,6 +77,9 @@ export function taskExtras({ event, previous, kind, link, mentionOf }) {
     // No "from Tania" on a task Tania gave herself.
     managerName: sameName(data.manager, now.assignee) ? "" : firstName(text(data.manager)),
     dueLabel: dueLabel(now.due),
+    dueTone: dueTone(now.due),
+    priorityLabel: `${PRIORITY[now.priority] || "Normal"} priority`,
+    priorityTone: now.priority >= 5 ? "highest" : now.priority === 4 ? "high" : now.priority != null && now.priority <= 2 ? "low" : "normal",
     finishLabel: finishLabel(now.status, now.due),
     assigneeFirstName: firstName(now.assignee?.name),
     // The rest of the description, when the title above had to cut it short.
@@ -139,6 +142,13 @@ function dueLabel(due) {
   if (days === 1) return "Due tomorrow";
   if (days <= 6) return `Due in ${days} days`;
   return `Due ${formatDate(due)}`;
+}
+
+// How urgent a due date is, for the card's colors: overdue, soon (today or tomorrow), later, none.
+function dueTone(due) {
+  const days = daysFromToday(due);
+  if (days === null) return "none";
+  return days < 0 ? "overdue" : days <= 1 ? "soon" : "later";
 }
 
 function finishTiming(due) {
