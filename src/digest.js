@@ -3,6 +3,7 @@
 
 import { DEFAULT_COMPLETED, mentionFor, taskUrl } from "./messages.js";
 import { TIME_ZONE, localDate } from "./time.js";
+import { shortArea, priorityOf } from "./taskview.js";
 const DASHBOARD = "https://dashboard.zinspector.com/";
 // Past due and coming up are listed in full; the other sections show a few and count the rest.
 const SHORT_LIST = 5;
@@ -139,7 +140,7 @@ export function selectQuiet(tasks, summary, settings = {}, now = new Date(), lis
 // The summary as one chat message (text, so people can be @mentioned: chat cards can't), or null when there's
 // nothing to list. `tasks` are task snapshots with their id; `pulse` adds last week's new / finished counts
 // (weekly, seen tasks).
-export function buildDigest(connection, tasks, settings = {}, now = new Date(), { pulse = false, preview = false } = {}) {
+export function buildDigest(connection, tasks, settings = {}, now = new Date(), { pulse = false, preview = false, format = null } = {}) {
   const summary = summaryOf(connection);
   const today = localDate(now);
   const due = selectTasks(tasks, summary, settings, now);
@@ -194,32 +195,116 @@ export function buildDigest(connection, tasks, settings = {}, now = new Date(), 
     // Most recently quiet first: those can still be saved.
     [SECTIONS.quiet, quiet.sort((x, y) => x.quietDays - y.quietDays), SHORT_LIST, (n) => `more quiet ${n === 1 ? "task" : "tasks"}`],
   ];
-  const sections = groups
+  const parts = groups
     .map(([heading, tasks, max, rest]) => [heading, mergeSame(tasks), max, rest])
     .filter(([, list]) => list.length)
     .map(([heading, list, max, rest]) => {
       const shown = max == null ? list : list.slice(0, max);
       const hidden = list.slice(shown.length).reduce((n, t) => n + (t.copies || 1), 0);
-      return [heading(summary), ...shown.map(line), hidden ? more(hidden, rest(hidden)) : ""].filter(Boolean).join("\n");
+      return { heading: heading(summary), shown, more: hidden ? more(hidden, rest(hidden)) : "" };
     });
+  const extras = [];
   if (olderUndated && summary.onlyDated === false) {
-    sections.push(more(olderUndated, `older ${olderUndated === 1 ? "task" : "tasks"} with no due date`));
+    extras.push(more(olderUndated, `older ${olderUndated === 1 ? "task" : "tasks"} with no due date`));
   }
   if (longQuiet) {
-    sections.push(
+    extras.push(
       `Plus ${longQuiet === 1 ? "1 older task" : `${longQuiet} older tasks`} with no activity for over ${cutoffLabel(summary.quietUpTo)}. Worth a clean-up? <${DASHBOARD}|Review in zInspector>`,
     );
   }
-  const footer = [
+  const notes = [
     pulse ? `Last week the team opened ${created} and wrapped up ${finished}${finished ? " 🎉" : ""}` : "",
     due.length && !overdue && summary.includeOverdue ? "Nothing past due 👍" : "",
     rotate(weekly ? CLOSERS.weekly : CLOSERS.daily, today),
-    `<${DASHBOARD}|Open zInspector →>`,
   ].filter(Boolean);
+
+  // Google Chat: one line tagging everyone on the listed tasks (cards can't @mention), then the list as a card.
+  if (connection.platform === "google-chat" && format !== "text") {
+    const shownTasks = parts.flatMap((p) => p.shown);
+    const tags = [...new Set(shownTasks.flatMap(peopleToTag).map((p) => tag(p)).filter((m) => m.startsWith("<") || m.startsWith("@@")))];
+    return {
+      text: [intro, ...tags].join(" "),
+      cardsV2: [digestCard({ title: weekly ? `Week of ${formatDay(mondayOf(today), false)}` : longDay(today), counts, parts, extras, notes }, settings)],
+    };
+  }
+
+  const sections = parts.map((p) => [p.heading, ...p.shown.map(line), p.more].filter(Boolean).join("\n")).concat(extras);
+  const footer = [...notes, `<${DASHBOARD}|Open zInspector →>`];
   const text = [intro, counts.length ? `_${counts.join(" · ")}_` : "", ...sections, footer.join("\n")]
     .filter(Boolean)
     .join("\n\n");
   return { text };
+}
+
+// The people a listed task tags: its owner, and the next to-do person when that's someone else.
+function peopleToTag(t) {
+  const next = realPerson(t.nextPerson || (t.next ? { name: t.next } : null));
+  return [t.owner?.person, next].filter((p) => p?.name);
+}
+
+// The alert cards' colors: red for overdue and highest priority, orange for high, amber for today or tomorrow.
+const COLOR = { overdue: "#d93025", highest: "#d93025", high: "#e8710a", soon: "#e37400", later: "#5f6368", quiet: "#5f6368", none: "#5f6368", normal: "#5f6368", low: "#5f6368" };
+const ICON = { overdue: "CLOCK", soon: "CLOCK", later: "CLOCK", none: "CLOCK", quiet: "CLOCK" };
+
+// The summary card: a header with the counts, a section per group, and each task laid out like the alert
+// cards (area, title and Open; a clock row with when and priority in color; who and status; the next step).
+function digestCard({ title, counts, parts, extras, notes }, settings) {
+  const sections = parts.map((p) => ({
+    header: escapeHtml(p.heading.replace(/\*/g, "")),
+    widgets: [
+      ...p.shown.flatMap((t, i) => [...(i ? [{ divider: {} }] : []), ...taskRows(t, taskUrl(t.id, settings.taskUrl))]),
+      ...(p.more ? [{ textParagraph: { text: chatToHtml(p.more) } }] : []),
+    ],
+  }));
+  if (extras.length) sections.push({ widgets: extras.map((e) => ({ textParagraph: { text: chatToHtml(e) } })) });
+  sections.push({
+    widgets: [
+      ...notes.map((n) => ({ textParagraph: { text: escapeHtml(n) } })),
+      { buttonList: { buttons: [{ text: "Open zInspector", onClick: { openLink: { url: DASHBOARD } } }] } },
+    ],
+  });
+  const header = counts.length ? { title, subtitle: counts.join(" · ") } : { title };
+  return { cardId: "summary", card: { header, sections } };
+}
+
+function taskRows(t, link) {
+  const title = titleOf(t).replace(/\s*\|\s*/g, " – ");
+  const tone = t.quiet ? "quiet" : t.overdue ? "overdue" : t.daysLeft != null && t.daysLeft <= 1 ? "soon" : t.dueDate ? "later" : "none";
+  const when = t.quiet ? `quiet ${quietFor(t.quietDays)}` : t.note ? t.note.replace(/^./, (c) => c.toUpperCase()) : "No due date yet";
+  const priority = priorityOf(t.priority);
+  const head = { text: `<b>${escapeHtml(title)}</b>${t.copies > 1 ? ` (${t.copies} tasks)` : ""}`, wrapText: true, startIcon: { knownIcon: "DESCRIPTION" } };
+  const area = shortArea(t.propertyName) || String(t.type || "").replace(/ Required$/, "");
+  if (area) head.topLabel = area;
+  if (link) head.button = { text: "Open", onClick: { openLink: { url: link } } };
+  const who = peopleOn(t, (p) => p.name);
+  const status = t.status && !/^new$/i.test(t.status) ? t.status : "";
+  const clock = {
+    startIcon: { knownIcon: ICON[tone] },
+    text: [`<font color="${COLOR[tone]}">${escapeHtml(when)}</font>`, `<font color="${COLOR[priority.tone]}">${escapeHtml(priority.label)}</font>`].join(" · "),
+    wrapText: true,
+  };
+  const people = [who, status].filter(Boolean).join(" · ");
+  if (people) clock.bottomLabel = people;
+  const rows = [{ decoratedText: head }, { decoratedText: clock }];
+  if (t.todo?.next) {
+    rows.push({ decoratedText: { startIcon: { knownIcon: "BOOKMARK" }, text: `Next: ${escapeHtml(t.todo.next)} <i>(${t.todo.done} of ${t.todo.total} done)</i>`, wrapText: true } });
+  }
+  return rows;
+}
+
+// "Plus 3 more. <https://…|See them>" (chat markup) as card HTML.
+function chatToHtml(s) {
+  return String(s)
+    .split(/(<https?:\/\/[^|>]+\|[^>]+>)/)
+    .map((part) => {
+      const m = part.match(/^<(https?:\/\/[^|>]+)\|([^>]+)>$/);
+      return m ? `<a href="${escapeHtml(m[1])}">${escapeHtml(m[2])}</a>` : escapeHtml(part);
+    })
+    .join("");
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 // The summary's opening lines, one a day in turn; [Chat name], [Day], [Week], [Days], [Due count] and

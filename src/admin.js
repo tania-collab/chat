@@ -70,6 +70,16 @@ export const ADMIN_HTML = String.raw`<!doctype html>
   dialog::backdrop { background: rgba(0,0,0,.4); }
   ol.steps { padding-left: 20px; margin: 0; } ol.steps li { margin-bottom: 6px; }
   textarea#f-template { min-height: 120px; font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .gcard { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-top: 8px; white-space: normal; }
+  .gcard-title { font-weight: 600; }
+  .gcard-sub, .gcard-head { color: var(--muted); font-size: 13px; }
+  .gcard-sec { border-top: 1px solid var(--line); margin-top: 10px; padding-top: 8px; }
+  .gcard-head { margin-bottom: 4px; }
+  .gcard-row { display: flex; gap: 10px; align-items: center; padding: 4px 0; line-height: 1.4; }
+  .gcard-icon { width: 20px; text-align: center; color: var(--muted); }
+  .gcard-divider { border-top: 1px solid var(--line); margin: 6px 0; }
+  .gcard-text { padding: 4px 0; }
+  .gcard-btn { display: inline-block; border: 1px solid var(--line); border-radius: 999px; padding: 2px 12px; color: var(--accent); margin-top: 6px; }
   .route { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
   .route-icon { width: 20px; text-align: center; }
   a.btn { text-decoration: none; display: inline-block; }

@@ -43,31 +43,26 @@ Messages about one task share a Google Chat thread. To tell what changed, the ap
 the 300 most recently seen tasks per chat. Messages still on an earlier default switch to the current one;
 edited messages stay as written.
 
-**Summary** (per chat, in its Settings): a plain, short message listing the open tasks by urgency, each task tagging
-the people on it (@mentioned when their chat id is on file under People):
+**Summary** (per chat, in its Settings): one line that @mentions everyone on the listed tasks (when their chat id
+is on file under People), then a card with the open tasks by urgency, each laid out like the alert cards:
 
 ```
-Good morning, zMarketing. Here's where things stand.
-1 past due · 2 coming up · 8 quiet
-
-Past due · already done? Close it in zInspector so it drops off.
-🔴 PTN 2026 RPM Franchise Conference — 13 days overdue · @Laura (next to-do) · Approval Requested
-      ➡️ Next: Get attendee list (5 of 6 done)
-
-Coming up (next 7 days)
-🟠 NARPM Broker Owner floorplan – meet 11-12 to pick booth — due tomorrow at 7:00am · @Athina (next to-do)
-🔹 Sponsor sessions follow-up — due Thu · @Tim (next: @Athina)
-
-No activity for 14+ days
-💤 Partnership w ApartmentAdvisor — quiet 9 days · @AJ (manager)
-
-Plus 74 older tasks with no activity for over 3 months. Worth a clean-up? Review in zInspector
-
-Anything stuck, or already done? Reply in this thread.
-Open zInspector →
+Happy Monday, zMarketing. Here's the week ahead. @Tim @Athina @Laura
+┌────────────────────────────────────────────────────────────┐
+│ Week of Nov 9 · 3 past due · 2 coming up · 5 quiet         │
+│ Past due · already done? Close it in zInspector so it drops off.
+│ 📄 Conferences                                              │
+│    PTN – 2026 RPM Franchise Conference              [Open] │
+│ 🕒 12 days overdue · Normal priority                        │
+│    Laura E. (next to-do) · Approval Requested               │
+│ 🔖 Next: Get attendee list (5 of 6 done)                    │
+│ Coming up (next 10 days)                                    │
+│ 📄 BizDev / Strategic … 🕒 Due tomorrow at 7:00am · High priority
+│ …                                     [Open zInspector]     │
+└────────────────────────────────────────────────────────────┘
 ```
 
-It's a message rather than a card because chat cards can't @mention anyone. Each chat chooses:
+Slack gets the same summary as text. Each chat chooses:
 
 - **Post it on**: any days of the week (shortcuts: Weekdays, Mondays only, Every day, Off), **at** any hour from
   6:30am to 6:30pm Pacific. The chat's card shows it ("Summary: Weekdays at 8:30am"). The suggested opening

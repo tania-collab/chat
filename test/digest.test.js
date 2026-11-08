@@ -4,6 +4,16 @@ import { buildDigest, isSummaryTime, describeSchedule, nextSendTime, sendTimeLab
 import worker from "../src/worker.js";
 import { makeEnv, admin, hook, withChat, created, withStatus, GCHAT_URL, ORIGIN } from "./helpers.js";
 
+// A posted Google Chat summary: the tagging line, and the card's text (section headers and rows) one per line.
+const cardOf = (body) => body.cardsV2[0].card;
+const cardLines = (body) =>
+  cardOf(body).sections.flatMap((s) => [
+    ...(s.header ? [`## ${s.header}`] : []),
+    ...s.widgets.map((w) => (w.decoratedText ? [w.decoratedText.topLabel, w.decoratedText.text, w.decoratedText.bottomLabel].filter(Boolean).join(" | ") : w.textParagraph?.text || "")),
+  ]);
+
+// The summary's text layout (Slack's, and what the Google Chat card shows), whatever the chat app.
+const buildText = (c, tasks, settings, now, options = {}) => buildDigest(c, tasks, settings, now, { ...options, format: "text" });
 const MONDAY = new Date("2026-10-26T15:30:00Z"); // 8:30am in Los Angeles (daylight saving)
 const weekly = { name: "Marketing tasks", platform: "google-chat", summary: { schedule: "weekly" } };
 const daily = { ...weekly, summary: { schedule: "daily" } };
@@ -88,7 +98,7 @@ test("tasks nobody is assigned to go under the next to-do, or the manager, as th
   assert.deepEqual(pick("anyone"), ["next:Laura E.", "managed:Athina G.", "assigned:Tim Wallace"]);
   assert.equal(SUMMARY_DEFAULTS.owners, "assigned-or-next");
 
-  const { text } = buildDigest({ ...weekly, summary: { schedule: "weekly", owners: "anyone" } }, tasks, {}, MONDAY);
+  const { text } = buildText({ ...weekly, summary: { schedule: "weekly", owners: "anyone" } }, tasks, {}, MONDAY);
   assert.match(text, /^🟠 \*next\* — due tomorrow · \*Laura E\.\* \(next to-do\)$/m);
   assert.match(text, /^🟠 \*managed\* — due tomorrow · \*Athina G\.\* \(manager\)$/m);
   assert.match(text, /^🟠 \*assigned\* — due tomorrow · \*Tim Wallace\* \(next: \*Laura E\.\*\)$/m);
@@ -111,7 +121,7 @@ test("going quiet lists recently quiet tasks first, and only counts the ones dro
     task({ id: "q6", description: "Slipping", lastActivity: ago(45) }),
     task({ id: "q7", description: "Ancient", lastActivity: ago(640) }),
   ];
-  const { text } = buildDigest(weekly, tasks, {}, MONDAY);
+  const { text } = buildText(weekly, tasks, {}, MONDAY);
   assert.match(text, /^_1 coming up · 2 quiet_$/m);
   assert.match(
     text,
@@ -120,10 +130,10 @@ test("going quiet lists recently quiet tasks first, and only counts the ones dro
   assert.match(text, /^Plus 2 older tasks with no activity for over 3 months\. Worth a clean-up\? <https:\/\/dashboard\.zinspector\.com\/\|Review in zInspector>$/m);
   assert.match(text, /^🟠 \*Due soon and quiet\* — due tomorrow · \*Tim Wallace\*$/m);
   assert.doesNotMatch(text, /Keyrenter|Ancient|Fresh/);
-  const noLimit = buildDigest({ ...weekly, summary: { schedule: "weekly", quietUpTo: 0 } }, tasks, {}, MONDAY).text;
+  const noLimit = buildText({ ...weekly, summary: { schedule: "weekly", quietUpTo: 0 } }, tasks, {}, MONDAY).text;
   assert.match(noLimit, /Keyrenter follow up\* — quiet 4 months/);
   assert.doesNotMatch(noLimit, /older tasks/);
-  assert.equal(buildDigest({ ...weekly, summary: { schedule: "weekly", quietDays: 0 } }, tasks.slice(0, 2), {}, MONDAY), null);
+  assert.equal(buildText({ ...weekly, summary: { schedule: "weekly", quietDays: 0 } }, tasks.slice(0, 2), {}, MONDAY), null);
 });
 
 test("system accounts aren't tagged: a task waiting on Ticket Notify goes to the next real person", () => {
@@ -133,7 +143,7 @@ test("system accounts aren't tagged: a task waiting on Ticket Notify goes to the
     task({ id: "s2", description: "Bot next, managed", assignee: null, due: "2026-10-27", nextPerson: bot, manager: laura }),
     task({ id: "s3", description: "Only bots", assignee: null, due: "2026-10-27", nextPerson: bot, manager: { name: "Z Support" } }),
   ];
-  const { text } = buildDigest({ ...weekly, summary: { schedule: "weekly", owners: "anyone" } }, tasks, {}, MONDAY);
+  const { text } = buildText({ ...weekly, summary: { schedule: "weekly", owners: "anyone" } }, tasks, {}, MONDAY);
   assert.match(text, /\*Assigned, bot next\* — due tomorrow · \*Tim Wallace\*$/m);
   assert.match(text, /\*Bot next, managed\* — due tomorrow · \*Laura E\.\* \(manager\)$/m);
   assert.doesNotMatch(text, /Only bots|Ticket Notify|Z Support/);
@@ -146,7 +156,7 @@ test("a due time shows for today and tomorrow, in Pacific time, and sets the day
     // 5pm Pacific on Oct 26 is already Oct 27 in UTC: still "today".
     task({ id: "t3", description: "Evening", due: "2026-10-27", dueAt: "2026-10-27T00:00:00Z" }),
   ];
-  const { text } = buildDigest(weekly, tasks, {}, MONDAY);
+  const { text } = buildText(weekly, tasks, {}, MONDAY);
   assert.match(text, /\*Booth call\* — due tomorrow at 7:00am/);
   assert.match(text, /\*Later\* — due Fri ·/);
   assert.match(text, /\*Evening\* — due today at 5:00pm/);
@@ -159,7 +169,7 @@ test("past due and coming up list everything; no-date and quiet show 5 and count
     ...Array.from({ length: 7 }, (_, i) => task({ id: `c${i}`, description: `Soon ${i}`, due: "2026-10-28" })),
     ...Array.from({ length: 7 }, (_, i) => task({ id: `q${i}`, description: `Quiet ${i}`, due: "2026-11-30", lastActivity: ago(15 + i) })),
   ];
-  const { text } = buildDigest({ ...weekly, summary: { schedule: "weekly" } }, tasks, { taskUrl: "https://z/{id}" }, MONDAY);
+  const { text } = buildText({ ...weekly, summary: { schedule: "weekly" } }, tasks, { taskUrl: "https://z/{id}" }, MONDAY);
   assert.equal((text.match(/Late \d/g) || []).length, 7);
   assert.equal((text.match(/Soon \d/g) || []).length, 7);
   assert.equal((text.match(/Quiet \d/g) || []).length, 5);
@@ -173,7 +183,7 @@ test("no due date lists only tasks from the last 7 days, and counts the older on
     task({ id: "n2", description: "Old one", createdAt: ago(40) }),
     task({ id: "n3", description: "Unknown age" }),
   ];
-  const { text } = buildDigest({ ...weekly, summary: { schedule: "weekly", onlyDated: false } }, tasks, {}, MONDAY);
+  const { text } = buildText({ ...weekly, summary: { schedule: "weekly", onlyDated: false } }, tasks, {}, MONDAY);
   assert.match(text, /^\*No due date\* \(new in the last 7 days\)\n▫️ \*Brand new\* — \*Tim Wallace\*$/m);
   assert.match(text, /^Plus 2 older tasks with no due date\. </m);
   assert.doesNotMatch(text, /Old one|Unknown age/);
@@ -183,14 +193,40 @@ test("the same task filed twice shows once, saying how many", () => {
   const ago = (days) => new Date(MONDAY.getTime() - days * 864e5).toISOString();
   const album = { description: "Your album from Storibox at SlotZilla Las Vegas", propertyName: "Marketing.Conferences", lastActivity: ago(16) };
   const tasks = [task({ id: "a1", ...album }), task({ id: "a2", ...album, assignee: laura }), task({ id: "b", description: "Other", lastActivity: ago(16) })];
-  const { text } = buildDigest(weekly, tasks, {}, MONDAY);
+  const { text } = buildText(weekly, tasks, {}, MONDAY);
   assert.equal((text.match(/Storibox/g) || []).length, 1);
   assert.match(text, /\*Your album from Storibox at SlotZilla Las Vegas\* \(2 tasks\) — quiet 2 weeks/);
 });
 
+test("in Google Chat, a line tags the people on the listed tasks and each task is laid out like the alert cards", () => {
+  const settings = { taskUrl: "https://z/{id}", people: [{ email: "tim@zinspector.com", googleChatId: "111" }, { email: "laura@zinspector.com", googleChatId: "222" }] };
+  const tasks = [
+    task({ id: "1", description: "Booth call", due: "2026-10-27", dueAt: "2026-10-27T14:00:00Z", priority: 5, propertyName: "Marketing.BizDev.Strategic", nextPerson: laura, todo: { next: "Pick a booth", done: 1, total: 4 } }),
+    task({ id: "2", description: "Late one", due: "2026-10-20", status: "In Progress", propertyName: "Marketing.Conferences" }),
+  ];
+  const { text, cardsV2 } = buildDigest(weekly, tasks, settings, MONDAY);
+  assert.equal(text, "*Happy Monday, Marketing tasks.* Here's the week ahead. <users/111> <users/222>");
+  const { header, sections } = cardsV2[0].card;
+  assert.deepEqual(header, { title: "Week of Oct 26", subtitle: "1 past due · 1 coming up" });
+  assert.equal(sections[0].header, "Past due · already done? Close it in zInspector so it drops off.");
+  const [head, clock, next, ...rest] = sections[1].widgets;
+  assert.deepEqual(head.decoratedText, {
+    text: "<b>Booth call</b>", wrapText: true, startIcon: { knownIcon: "DESCRIPTION" }, topLabel: "BizDev / Strategic",
+    button: { text: "Open", onClick: { openLink: { url: "https://z/1" } } },
+  });
+  assert.deepEqual(clock.decoratedText, {
+    startIcon: { knownIcon: "CLOCK" },
+    text: '<font color="#e37400">Due tomorrow at 7:00am</font> · <font color="#d93025">Highest priority</font>',
+    wrapText: true, bottomLabel: "Tim Wallace (next: Laura E.)",
+  });
+  assert.equal(rest.length, 0);
+  assert.match(next.decoratedText.text, /^Next: Pick a booth <i>\(1 of 4 done\)<\/i>$/);
+  assert.equal(sections.at(-1).widgets.at(-1).buttonList.buttons[0].text, "Open zInspector");
+});
+
 test("a task's pending to-do shows under it", () => {
   const t = task({ due: "2026-10-27", todo: { next: "Get attendee list", done: 5, total: 6 } });
-  assert.match(buildDigest(weekly, [t], {}, MONDAY).text, /— due tomorrow · \*Tim Wallace\*\n      ➡️ Next: Get attendee list _\(5 of 6 done\)_$/m);
+  assert.match(buildText(weekly, [t], {}, MONDAY).text, /— due tomorrow · \*Tim Wallace\*\n      ➡️ Next: Get attendee list _\(5 of 6 done\)_$/m);
 });
 
 test("an opening line saved while it was the suggested one follows today's suggestions", () => {
@@ -220,7 +256,7 @@ test("the weekly summary: tasks by urgency, each tagging the people on it, with 
     task({ id: "4", description: "Done thing", status: "Work Complete", finishedAt: "2026-10-22T10:00:00Z" }),
   ];
   const settings = { taskUrl: "https://z/task/{id}", people: [{ email: "tim@zinspector.com", googleChatId: "111" }] };
-  const { text } = buildDigest(weekly, tasks, settings, MONDAY, { pulse: true });
+  const { text } = buildText(weekly, tasks, settings, MONDAY, { pulse: true });
   const [intro, ...rest] = text.split("\n\n");
   assert.ok(DEFAULT_INTRO.weekly.map((l) => l.replace("[Chat name]", "Marketing tasks").replace("[Week]", "Oct 26")).includes(intro));
   assert.deepEqual(rest.slice(0, 3), [
@@ -240,36 +276,36 @@ test("the weekly summary: tasks by urgency, each tagging the people on it, with 
 test("the opening line greets by time of day and Mondays; a chat's own opening line is used as written", () => {
   const one = [task({ due: "2026-10-30" })];
   const tuesday = new Date(MONDAY.getTime() + 864e5);
-  assert.match(buildDigest(weekly, one, {}, MONDAY).text, /^\*Happy Monday, Marketing tasks\.\* Here's the week ahead\.\n/);
-  assert.match(buildDigest(daily, one, {}, tuesday).text, /^\*Good morning, Marketing tasks\.\* Here's where things stand\.\n/);
+  assert.match(buildText(weekly, one, {}, MONDAY).text, /^\*Happy Monday, Marketing tasks\.\* Here's the week ahead\.\n/);
+  assert.match(buildText(daily, one, {}, tuesday).text, /^\*Good morning, Marketing tasks\.\* Here's where things stand\.\n/);
   const afternoon = { ...daily, summary: { schedule: "daily", hour: 14 } };
-  assert.match(buildDigest(afternoon, one, {}, tuesday).text, /^\*Hi Marketing tasks,\* here's where things stand\.\n/);
-  assert.match(buildDigest(daily, one, {}, tuesday).text, /\nAnything stuck, or already done\? Reply in this thread\.\n/);
+  assert.match(buildText(afternoon, one, {}, tuesday).text, /^\*Hi Marketing tasks,\* here's where things stand\.\n/);
+  assert.match(buildText(daily, one, {}, tuesday).text, /\nAnything stuck, or already done\? Reply in this thread\.\n/);
   const reworded = { ...daily, summary: { schedule: "daily", intro: "[Chat name]: [Due count] due, [Overdue count] late, [Unknown]" } };
-  assert.match(buildDigest(reworded, one, {}, MONDAY).text, /^Marketing tasks: 1 due, 0 late, \[Unknown\]\n/);
+  assert.match(buildText(reworded, one, {}, MONDAY).text, /^Marketing tasks: 1 due, 0 late, \[Unknown\]\n/);
   assert.equal(summaryOf({ summary: { intro: "☕ *Morning, [Chat name]!* Curious what today holds? Here's where things stand 👇" } }).intro, "");
 });
 
 test("people are @mentioned on their tasks when their chat id is on file, else named in bold; the preview shows names", () => {
   const settings = { people: [{ email: "tim@zinspector.com", googleChatId: "111" }] };
   const tasks = [task({ id: "a", description: "Mine", due: "2026-10-27" }), task({ id: "b", description: "Hers", assignee: laura, due: "2026-10-27" })];
-  const { text } = buildDigest(weekly, tasks, settings, MONDAY);
+  const { text } = buildText(weekly, tasks, settings, MONDAY);
   assert.match(text, /^🟠 \*Mine\* — due tomorrow · <users\/111>$/m);
   assert.match(text, /^🟠 \*Hers\* — due tomorrow · \*Laura E\.\*$/m);
-  assert.match(buildDigest(weekly, tasks, settings, MONDAY, { preview: true }).text, /— due tomorrow · @@Tim Wallace@@$/m);
+  assert.match(buildText(weekly, tasks, settings, MONDAY, { preview: true }).text, /— due tomorrow · @@Tim Wallace@@$/m);
   const slack = { ...weekly, platform: "slack" };
-  assert.match(buildDigest(slack, tasks, { people: [{ email: "tim@zinspector.com", slackId: "U1" }] }, MONDAY).text, /· <@U1>$/m);
+  assert.match(buildText(slack, tasks, { people: [{ email: "tim@zinspector.com", slackId: "U1" }] }, MONDAY).text, /· <@U1>$/m);
 });
 
 test("stays quiet when nothing matches", () => {
-  assert.equal(buildDigest(weekly, [task({ status: "Closed", due: "2026-10-27" })], {}, MONDAY), null);
-  assert.equal(buildDigest(weekly, [task({})], {}, MONDAY), null); // no due date
+  assert.equal(buildText(weekly, [task({ status: "Closed", due: "2026-10-27" })], {}, MONDAY), null);
+  assert.equal(buildText(weekly, [task({})], {}, MONDAY), null); // no due date
 });
 
 test("titles that would break a chat link are cleaned", () => {
-  const { text } = buildDigest(weekly, [task({ id: "9", description: "A <b>|c> task", due: "2026-10-27" })], { taskUrl: "https://z/{id}" }, MONDAY);
+  const { text } = buildText(weekly, [task({ id: "9", description: "A <b>|c> task", due: "2026-10-27" })], { taskUrl: "https://z/{id}" }, MONDAY);
   assert.match(text, /<https:\/\/z\/9\|A b – c task>/);
-  const pipe = buildDigest(weekly, [task({ id: "8", description: "PTN | 2027 Reunion & Sponsorships", due: "2026-10-27" })], { taskUrl: "https://z/{id}" }, MONDAY);
+  const pipe = buildText(weekly, [task({ id: "8", description: "PTN | 2027 Reunion & Sponsorships", due: "2026-10-27" })], { taskUrl: "https://z/{id}" }, MONDAY);
   assert.match(pipe.text, /<https:\/\/z\/8\|PTN – 2027 Reunion & Sponsorships>/);
 });
 
@@ -282,10 +318,15 @@ test("without an API key, Send the summary now lists the tasks the app has seen"
     await hook(env, c.id, { ...created, data: { ...created.data, id: 99, description: "Second task" } });
     const res = await (await admin(env, "POST", `/api/connections/${c.id}/digest`)).json();
     assert.equal(res.ok, true);
-    const { text } = calls.at(-1).body;
-    assert.match(text, /^_1 without a date_$/m);
-    assert.match(text, /^\*No due date\* \(new in the last 7 days\)\n▫️ .*Second task.* — \*Tania Aquirre\*$/m);
-    assert.match(text, /Last week the team opened 2 and wrapped up 1 🎉\nNothing past due 👍\n/);
+    const body = calls.at(-1).body;
+    assert.equal(cardOf(body).header.subtitle, "1 without a date");
+    const lines = cardLines(body);
+    const at = lines.indexOf("## No due date (new in the last 7 days)");
+    assert.ok(at >= 0);
+    assert.match(lines[at + 1], /^Conferences \| <b>Second task<\/b>$/);
+    assert.match(lines[at + 2], /No due date yet<\/font> · .*Normal priority<\/font> \| Tania Aquirre$/);
+    assert.ok(lines.includes("Last week the team opened 2 and wrapped up 1 🎉"));
+    assert.ok(lines.includes("Nothing past due 👍"));
   });
 });
 
@@ -306,7 +347,7 @@ test("the hourly cron sends each chat's summary on its days at its hour, and any
       const pending = [];
       await worker.scheduled({ scheduledTime: Date.parse(iso) }, env, { waitUntil: (p) => pending.push(p) });
       await Promise.all(pending);
-      return calls.slice(before).map((c) => c.body.text.match(/\|(D|W|A)>/)[1]);
+      return calls.slice(before).map((c) => cardLines(c.body).join("\n").match(/<b>(D|W|A)<\/b>/)[1]);
     };
     assert.deepEqual(await run("2026-10-26T16:30:00Z"), []); // Monday 9:30 Pacific
     assert.deepEqual(await run("2026-10-26T15:30:00Z"), ["D", "W"]); // Monday 8:30
@@ -387,9 +428,11 @@ test("with an API key, saving looks up the properties and the summary reads thei
     const reads = calls.api.filter((a) => a.url.pathname === "/api/tasks/");
     assert.deepEqual(reads.map((a) => a.url.searchParams.get("Property")), ["903925", "2206214", "2962118"]);
     assert.equal(reads[0].headers.Origin, ORIGIN);
-    const { text } = calls.chat.at(-1).body;
-    assert.match(text, /^🔴 .*Idea: a chat message.* — 5 days overdue · <users\/777> · In Progress$/m);
-    assert.match(text, /^🔹 .*Conference: PTN.* — due \w+ · <users\/777> · Approval Requested\n      ➡️ Next: Get attendee list _\(1 of 2 done\)_$/m);
+    const body = calls.chat.at(-1).body;
+    assert.match(body.text, /<users\/777>$/); // tagged once, above the card
+    const lines = cardLines(body).join("\n");
+    assert.match(lines, /BizDev \/ Strategic \| <b>Idea: a chat message[^<]*<\/b>\n<font color="#d93025">5 days overdue<\/font> · <font color="#5f6368">Normal priority<\/font> \| Tim Wallace · In Progress/);
+    assert.match(lines, /<b>Conference: PTN[^<]*<\/b>\n<font color="#5f6368">Due \w+<\/font>.*\| Tim Wallace · Approval Requested\nNext: Get attendee list <i>\(1 of 2 done\)<\/i>/);
   });
 });
 
@@ -433,7 +476,8 @@ test("Preview the summary shows the text with the form's unsaved settings, and p
     assert.equal((await preview({})).empty, true); // the task has no due date
     const r = await preview({ onlyDated: false, intro: "Hello [Chat name]" });
     assert.equal(r.ok, true);
-    assert.match(r.preview, /^Hello Mkt\n/);
+    assert.match(r.preview, /^Hello Mkt/);
+    assert.ok(r.card.sections.length > 1);
     assert.equal(calls.length, posted);
     const saved = (await (await admin(env, "GET", "/api/state")).json()).connections[0].summary;
     assert.equal(saved.intro, ""); // previewing doesn't save
