@@ -134,6 +134,32 @@ export const ADMIN_HTML = String.raw`<!doctype html>
     <select id="f-only"></select>
     <label>What to post</label>
     <div class="checks" id="f-alerts"></div>
+    <h2 style="margin:24px 0 4px">Summary</h2>
+    <div class="hint">A list of the open tasks coming due, per person, overdue first. Nothing is posted when there's nothing to list.</div>
+    <div class="split" style="margin-top:4px">
+      <div>
+        <label for="f-schedule">Post it</label>
+        <select id="f-schedule"></select>
+      </div>
+      <div>
+        <label for="f-days">Tasks due within</label>
+        <select id="f-days"></select>
+      </div>
+    </div>
+    <div class="checks" style="margin-top:8px">
+      <label><input type="checkbox" id="f-onlyProperties"> Only these properties</label>
+    </div>
+    <div id="f-propertiesBox">
+      <textarea id="f-properties" spellcheck="false" style="min-height:70px" placeholder="Marketing.Conferences&#10;Marketing.BizDev*"></textarea>
+      <div class="hint">One per line, as zInspector names them. End with * for every property that starts with it
+        (Marketing.BizDev* = Strategic, Enterprise, Company…). A property's link from zInspector works too.</div>
+    </div>
+    <div class="checks" style="margin-top:8px">
+      <label><input type="checkbox" id="f-onlyDated"> Only tasks with a due date</label>
+      <label><input type="checkbox" id="f-includeOverdue"> Include overdue tasks</label>
+      <label><input type="checkbox" id="f-onlyAssigned"> Only tasks with someone assigned</label>
+    </div>
+    <div class="hint" id="f-summarySource"></div>
     <h2 style="margin:24px 0 4px">Wording</h2>
     <div class="hint">Click a detail to add it. A detail with no value (no due date, say) is left out on its own. Formatting: *bold*, _italic_.</div>
     <label for="f-event">Message for</label>

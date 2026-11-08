@@ -20,6 +20,9 @@ export function snapshotOf(data = {}) {
     type: text(data.type),
     description: text(data.description).slice(0, 500),
     next: text(data.nextToDo?.name ?? data.nextToDo),
+    // For the summary's property filter.
+    propertyName: text(data.propertyName),
+    propertyId: data.propertyId ?? data.property?.id ?? (typeof data.property === "number" ? data.property : null),
   };
 }
 

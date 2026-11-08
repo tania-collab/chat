@@ -1,0 +1,117 @@
+// Reading zInspector for the summary: the open tasks on a chat's chosen properties, and the properties' ids.
+// Read-only, with the ZINSPECTOR_API_KEY secret. zInspector checks the request's Origin against the key's
+// whitelist: ZINSPECTOR_ORIGIN when set, else this app's own address.
+
+import { MAX_PROPERTIES } from "./digest.js";
+import { localDate } from "./time.js";
+
+const API = "https://portfolio.zinspector.com/api";
+const PAGE_SIZE = 500;
+const MAX_PAGES = 10;
+
+export function zinspectorConfigured(env) {
+  return Boolean(env.ZINSPECTOR_API_KEY);
+}
+
+// The tasks a summary reads: from zInspector when it has an API key and the chat has chosen properties
+// (a whole account is too much to read on a schedule), else the ones the app has seen.
+export function readsZinspector(env, summary) {
+  return zinspectorConfigured(env) && summary.onlyProperties && summary.properties.some((p) => p.ids?.length);
+}
+
+// Open (active) tasks on the given property ids, as task snapshots with their id. `cache` (a Map) shares
+// one read per property between the chats of one run.
+export async function openTasksOn(env, origin, ids, cache = new Map()) {
+  const lists = [];
+  for (const id of ids) {
+    if (!cache.has(id)) cache.set(id, await readAll(env, origin, "/tasks/", { active: "true", Property: id }));
+    lists.push(cache.get(id));
+  }
+  return [...new Map(lists.flat().map((t) => [t.id, t])).values()].map(taskFromApi);
+}
+
+// Turns the lines typed in a chat's settings into properties: a number or a zInspector link becomes an id,
+// a name is looked up ("Marketing.BizDev*" finds every property whose name starts with Marketing.BizDev).
+// Lines already looked up (`known`) are reused. Returns {value} or {error}.
+export async function resolveProperties(env, origin, lines, known = []) {
+  const entries = [];
+  for (const raw of lines.map((l) => String(l).trim()).filter(Boolean)) {
+    const again = known.find((k) => k.label === raw && (k.ids?.length || !zinspectorConfigured(env)));
+    if (again) {
+      entries.push(again);
+      continue;
+    }
+    const id = raw.match(/^\d+$/)?.[0] || raw.match(/^https?:\/\/\S*?(\d{3,})\/?$/)?.[1];
+    if (id) {
+      entries.push({ label: raw, name: "", ids: [Number(id)] });
+      continue;
+    }
+    if (!zinspectorConfigured(env)) {
+      entries.push({ label: raw, name: raw, ids: [] });
+      continue;
+    }
+    const prefix = raw.endsWith("*");
+    const want = (prefix ? raw.slice(0, -1) : raw).trim().toLowerCase();
+    const found = (await readAll(env, origin, "/propertiesCursor/", { search: want }, 2)).filter((p) => {
+      const name = String(p.Name || "").toLowerCase();
+      return prefix ? name.startsWith(want) : name === want;
+    });
+    if (!found.length) {
+      return {
+        error: `Couldn't find the property "${raw}" in zInspector. Check the spelling (it's the name as zInspector shows it, like Marketing.Comms), or paste the property's link from zInspector instead.`,
+      };
+    }
+    entries.push({ label: raw, name: raw, ids: found.map((p) => p.id) });
+  }
+  const total = entries.reduce((n, e) => n + Math.max(1, e.ids.length), 0);
+  if (total > MAX_PROPERTIES) {
+    return { error: `That's ${total} properties; a summary can follow up to ${MAX_PROPERTIES}. Pick fewer, or narrower names.` };
+  }
+  return { value: entries };
+}
+
+// A task from zInspector's API in the shape the app keeps from webhooks (see taskview.js snapshotOf).
+export function taskFromApi(t) {
+  return {
+    id: String(t.id),
+    status: String(t.Status ?? ""),
+    assignee: t.AssignedToUser || t.AssignedToUserName ? { name: t.AssignedToUserName || "Someone", email: "" } : null,
+    priority: t.Priority ?? null,
+    // zInspector stores due times in UTC; the team's day is Pacific.
+    due: t.EndDate ? (String(t.EndDate).length > 10 ? localDate(new Date(t.EndDate)) : t.EndDate) : null,
+    type: String(t.Action ?? ""),
+    description: String(t.Description ?? "").slice(0, 500),
+    next: String(t.NextToDoName ?? ""),
+    propertyName: String(t.PropertyName ?? ""),
+    propertyId: t.Property ?? null,
+  };
+}
+
+// Every row of a list route, following its `next` links.
+async function readAll(env, origin, path, params, maxPages = MAX_PAGES) {
+  const rows = [];
+  let url = `${API}${path}?${new URLSearchParams({ page_size: String(PAGE_SIZE), ...params })}`;
+  for (let page = 0; page < maxPages && url; page++) {
+    const headers = { Accept: "application/json", "x-api-key": env.ZINSPECTOR_API_KEY };
+    if (env.ZINSPECTOR_ORIGIN || origin) headers.Origin = env.ZINSPECTOR_ORIGIN || origin;
+    const res = await fetch(url, { headers });
+    if (!res.ok) throw new ZinspectorError(res.status, await res.text());
+    const body = await res.json();
+    if (Array.isArray(body)) return [...rows, ...body];
+    rows.push(...(body.results || []));
+    // `next` is a full address; keep its query on our own base so the key only goes to zInspector.
+    url = body.next ? `${API}${path}?${new URL(body.next, API).searchParams}` : null;
+  }
+  return rows;
+}
+
+export class ZinspectorError extends Error {
+  constructor(status, body) {
+    const why =
+      status === 401 || status === 403
+        ? "zInspector refused the API key. Check the ZINSPECTOR_API_KEY secret, and that this app's address is on the key's whitelist (or set ZINSPECTOR_ORIGIN to one that is)."
+        : `zInspector answered ${status}.`;
+    super(`${why} ${String(body || "").slice(0, 200)}`.trim());
+    this.status = status;
+  }
+}

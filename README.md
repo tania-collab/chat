@@ -42,11 +42,19 @@ Messages about one task share a Google Chat thread. To tell what changed, the ap
 the 300 most recently seen tasks per chat. Messages still on an earlier default switch to the current one;
 edited messages stay as written.
 
-**Weekly digest** (Mondays 8:30am Pacific, on by default per chat): one card with what's open per person
-(overdue first, with "overdue since Fri" / "due Wed"), how many are due this week, and last week's new and
-finished counts. People with overdue tasks are @mentioned when their chat id is on file. **Send digest now**
-on a chat's card posts it right away. The digest only knows tasks zInspector has sent since the chat was
-connected; older tasks join as soon as they're updated. The schedule is the `[triggers]` cron in
+**Summary** (per chat, in its Settings): a card listing the open tasks coming due, per person, overdue first, with
+each task's due day and status. Each chat chooses:
+
+- **Post it**: off, daily (weekday mornings) or weekly (Monday mornings), at 8:30am Pacific.
+- **Tasks due within**: tomorrow, or the next 3, 7, 14 or 30 days.
+- **Only these properties**: one per line as zInspector names them (`Marketing.Conferences`); end with `*` for every
+  property that starts with it (`Marketing.BizDev*`), or paste a property's link.
+- **Only tasks with a due date**, **Include overdue tasks**, **Only tasks with someone assigned**.
+
+Nothing is posted when nothing matches. People with overdue tasks are @mentioned when their chat id is on file.
+**Send the summary now** on a chat's card posts it right away. With a zInspector API key (below) and chosen
+properties, the summary reads every open task on those properties from zInspector when it's sent. Without them, it
+lists the tasks zInspector has sent the chat since it was connected. The schedule is the `[triggers]` cron in
 `wrangler.toml`.
 
 **What a chat hears about** is set per chat:
@@ -136,6 +144,18 @@ rather than opening up.
 **Just testing on your own?** Instead of Access, add a secret `ADMIN_PASSWORD`; the browser then asks for it
 (any user name). Once `ACCESS_TEAM_DOMAIN` and `ACCESS_AUD` are set, the password no longer works.
 
+## Summaries from zInspector (optional)
+
+To list every open task (not only those zInspector has sent the chat), give the app a zInspector API key. It only
+reads: open tasks on the chosen properties, and property names to find them.
+
+1. Get an API key from zInspector whose whitelist includes the app's address (`chat.z-test-tool.workers.dev`). If
+   the key's whitelist has another address instead, also add a secret `ZINSPECTOR_ORIGIN` with it
+   (like `https://zcrm.pages.dev`).
+2. Worker → **Settings** → **Variables and Secrets** → add `ZINSPECTOR_API_KEY`, type **Secret** → **Deploy**.
+3. Open the app once (so it knows its own address), then in a chat's **Settings** tick **Only these properties** and
+   list them. Saving looks the names up in zInspector and says if one isn't found or the key is refused.
+
 ## Connect a chat
 
 1. **Get the chat's webhook URL.**
@@ -184,7 +204,8 @@ them in every account.
 | `src/messages.js` | events, default copy, the template engine, @mentions, threads |
 | `src/taskview.js` | task state, what changed, ready-made values |
 | `src/cards.js` | the Google Chat card (and its Slack text version) |
-| `src/digest.js` | the weekly digest |
+| `src/digest.js` | the summary: schedule, filters, the card |
+| `src/summary.js` | reading open tasks and properties from zInspector's API |
 | `src/legacy.js` | earlier default copy, to move unedited messages forward |
 | `src/store.js` | connections, settings, logs and last events in KV, input checks |
 | `src/admin.js` | the admin page (HTML + CSS) |

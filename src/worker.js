@@ -5,11 +5,12 @@
 //   /api/...                     admin JSON API used by the page
 //
 // Sign-in: Cloudflare Access (ACCESS_TEAM_DOMAIN + ACCESS_AUD) when set, else the ADMIN_PASSWORD secret.
-// Bindings: KV namespace RELAY.
+// Bindings: KV namespace RELAY. Summaries read zInspector with the ZINSPECTOR_API_KEY secret (optional).
 
 import { DEFAULT_COMPLETED, buildMessage, buildPayload, cardFor, skipReason, SKIP_REASONS, AUDIENCES, ALERTS, alertsOf, eventKind, deliveryUrl, render, fieldPaths, templateFor, EVENTS, EXAMPLES, EXAMPLE_PREVIOUS, TEST_MESSAGE } from "./messages.js";
 import { snapshotOf, EXTRA_NAMES } from "./taskview.js";
-import { buildDigest, isDigestTime } from "./digest.js";
+import { buildDigest, isSummaryTime, summaryOf, SCHEDULES, SUMMARY_DAYS } from "./digest.js";
+import { zinspectorConfigured, readsZinspector, openTasksOn, resolveProperties, ZinspectorError } from "./summary.js";
 import {
   getConnections,
   saveConnections,
@@ -34,10 +35,11 @@ function withDates(snapshot, previous, event, kind, settings) {
 }
 
 export default {
-  // Cron (wrangler.toml) fires Mondays at 15:30 and 16:30 UTC; whichever is 8:30am Pacific sends the digests.
+  // Cron (wrangler.toml) fires daily at 15:30 and 16:30 UTC; whichever is 8:30am Pacific sends the summaries
+  // that are due (daily ones on weekdays, weekly ones on Mondays).
   async scheduled(controller, env, ctx) {
-    if (!env.RELAY || !isDigestTime(new Date(controller.scheduledTime))) return;
-    ctx.waitUntil(sendDigests(env));
+    if (!env.RELAY) return;
+    ctx.waitUntil(sendDigests(env, new Date(controller.scheduledTime)));
   },
 
   async fetch(request, env) {
@@ -107,18 +109,43 @@ async function relay(request, env, id) {
   return text(result.body, result.ok ? 200 : 502);
 }
 
-async function sendDigests(env) {
-  for (const connection of await getConnections(env.RELAY)) {
-    if (alertsOf(connection).digest) await sendDigest(env, connection);
+async function sendDigests(env, now) {
+  const due = (await getConnections(env.RELAY)).filter((c) => isSummaryTime(summaryOf(c).schedule, now));
+  const cache = new Map(); // one zInspector read per property for all chats
+  for (const connection of due) {
+    try {
+      await sendDigest(env, connection, now, cache);
+    } catch (err) {
+      console.error(err);
+    }
   }
 }
 
-// Posts one chat's digest; returns {ok, status, detail}, or null when there was nothing to report.
-async function sendDigest(env, connection) {
+// Posts one chat's summary; returns {ok, status, detail}, or null when there was nothing to list. A failed
+// zInspector read is logged in the chat's history (and returned) instead of posting a partial list.
+async function sendDigest(env, connection, now = new Date(), cache = new Map()) {
+  const summary = summaryOf(connection);
   const activity = await getActivity(env.RELAY, connection.id);
-  const payload = buildDigest(connection, activity, await getSettings(env.RELAY));
-  if (!payload) return null;
+  const settings = await getSettings(env.RELAY);
   const event = { type: "digest" };
+  let tasks;
+  const fromZinspector = readsZinspector(env, summary);
+  if (fromZinspector) {
+    try {
+      const ids = [...new Set(summary.properties.flatMap((p) => p.ids))];
+      tasks = await openTasksOn(env, settings.appOrigin, ids, cache);
+    } catch (err) {
+      if (!(err instanceof ZinspectorError)) throw err;
+      const entry = logEntry("digest", event, { ok: false, status: err.status, body: err.message }, "app");
+      await saveActivity(env.RELAY, connection.id, activity, { entry, kind: "test", event });
+      return { ok: false, status: err.status, detail: entry.detail };
+    }
+  } else {
+    tasks = Object.entries(activity.tasks || {}).map(([id, t]) => ({ id, ...t }));
+  }
+  const pulse = !fromZinspector && summary.schedule === "weekly";
+  const payload = buildDigest(connection, tasks, settings, now, { pulse });
+  if (!payload) return null;
   const res = await fetch(connection.chatUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=UTF-8" },
@@ -127,6 +154,20 @@ async function sendDigest(env, connection) {
   const entry = logEntry("digest", event, { ok: res.ok, status: res.status, body: await res.text() }, "app");
   await saveActivity(env.RELAY, connection.id, await getActivity(env.RELAY, connection.id), { entry, kind: "test", event });
   return { ok: entry.ok, status: entry.status, detail: entry.detail };
+}
+
+// Looks up the property lines typed in a chat's settings into {summary.properties}; {error} when one isn't found.
+async function withProperties(env, input, existing, origin) {
+  if (!input.summary || !Array.isArray(input.summary.propertyLines)) return { value: input };
+  try {
+    const known = summaryOf(existing).properties;
+    const { value, error } = await resolveProperties(env, origin, input.summary.propertyLines.slice(0, 100), known);
+    if (error) return { error };
+    return { value: { ...input, summary: { ...input.summary, properties: value } } };
+  } catch (err) {
+    if (err instanceof ZinspectorError) return { error: err.message };
+    throw err;
+  }
 }
 
 // `payload` is {text} or {text, cardsV2}.
@@ -174,6 +215,9 @@ async function api(request, env, url, user) {
   const method = request.method;
 
   if (parts[1] === "state" && method === "GET") {
+    // zInspector checks the Origin of the summary's reads; remember this app's address for the scheduled ones.
+    const current = await getSettings(kv);
+    if (current.appOrigin !== url.origin) await kv.put("settings", JSON.stringify({ ...current, appOrigin: url.origin }));
     return json({
       // Messages still on an earlier default show (and save) as the current default.
       connections: await Promise.all(
@@ -181,6 +225,7 @@ async function api(request, env, url, user) {
           ...c,
           templates: Object.fromEntries(EVENTS.map((e) => [e.key, templateFor(c, e.key)])),
           alerts: alertsOf(c),
+          summary: summaryOf(c),
           health: health((await getActivity(kv, c.id)).entries),
         })),
       ),
@@ -191,6 +236,9 @@ async function api(request, env, url, user) {
       audiences: AUDIENCES,
       alerts: ALERTS,
       skipReasons: SKIP_REASONS,
+      schedules: SCHEDULES,
+      summaryDays: SUMMARY_DAYS,
+      summaryReadsZinspector: zinspectorConfigured(env),
     });
   }
 
@@ -215,7 +263,7 @@ async function api(request, env, url, user) {
   if (parts[1] === "settings" && method === "PUT") {
     const { value, error } = cleanSettings(await request.json());
     if (error) return json({ error }, 400);
-    await kv.put("settings", JSON.stringify(value));
+    await kv.put("settings", JSON.stringify({ ...value, appOrigin: url.origin }));
     return json(value);
   }
 
@@ -224,7 +272,9 @@ async function api(request, env, url, user) {
   const id = parts[2];
 
   if (!id && method === "POST") {
-    const { value, error } = cleanConnection(await request.json(), {}, user.email);
+    const input = await withProperties(env, await request.json(), {}, url.origin);
+    if (input.error) return json({ error: input.error }, 400);
+    const { value, error } = cleanConnection(input.value, {}, user.email);
     if (error) return json({ error }, 400);
     await saveConnections(kv, [...connections, value]);
     return json(value, 201);
@@ -234,7 +284,9 @@ async function api(request, env, url, user) {
   if (!existing) return json({ error: "Connection not found" }, 404);
 
   if (!parts[3] && method === "PUT") {
-    const { value, error } = cleanConnection(await request.json(), existing, user.email);
+    const input = await withProperties(env, await request.json(), existing, url.origin);
+    if (input.error) return json({ error: input.error }, 400);
+    const { value, error } = cleanConnection(input.value, existing, user.email);
     if (error) return json({ error }, 400);
     await saveConnections(kv, connections.map((c) => (c.id === id ? value : c)));
     return json(value);
