@@ -156,13 +156,20 @@ async function sendDigest(env, connection, now = new Date(), cache = new Map(), 
   const pulse = !fromZinspector && summary.postDays.length === 1;
   const payload = buildDigest(connection, tasks, settings, now, { pulse, preview });
   if (!payload) return null;
-  if (preview) return { ok: true, preview: payload.text, cards: (payload.cardsV2 || []).map((c) => c.card) };
-  const res = await fetch(connection.chatUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json; charset=UTF-8" },
-    body: JSON.stringify(payload),
-  });
-  const entry = logEntry("digest", event, { ok: res.ok, status: res.status, body: await res.text() }, "app");
+  // Google Chat summaries come as several messages, posted in order; Slack's as one.
+  const messages = payload.messages || [payload];
+  if (preview) return { ok: true, messages: messages.map((m) => ({ text: m.text || "", cards: (m.cardsV2 || []).map((c) => c.card) })) };
+  let result;
+  for (const message of messages) {
+    const res = await fetch(connection.chatUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json; charset=UTF-8" },
+      body: JSON.stringify(message),
+    });
+    result = { ok: res.ok, status: res.status, body: await res.text() };
+    if (!res.ok) break;
+  }
+  const entry = logEntry("digest", event, result, "app");
   await saveActivity(env.RELAY, connection.id, await getActivity(env.RELAY, connection.id), { entry, kind: "test", event });
   return { ok: entry.ok, status: entry.status, detail: entry.detail };
 }

@@ -6,7 +6,7 @@ import { makeEnv, admin, hook, withChat, created, withStatus, GCHAT_URL, ORIGIN 
 
 // A posted Google Chat summary: the tagging line, and the card's text (section headers and rows) one per line.
 const cardLines = (body) =>
-  body.cardsV2.flatMap(({ card }) => [
+  (body.cardsV2 || []).flatMap(({ card }) => [
     ...(card.header ? [`## ${card.header.title}`] : []),
     ...card.sections.flatMap((s) =>
       s.widgets.map((w) => (w.decoratedText ? [w.decoratedText.topLabel, w.decoratedText.text].filter(Boolean).join(" | ") : w.textParagraph?.text || "")),
@@ -199,7 +199,7 @@ test("the same task filed twice shows once, saying how many", () => {
   assert.match(text, /\*Your album from Storibox at SlotZilla Las Vegas\* \(2 tasks\) — quiet 2 weeks/);
 });
 
-test("in Google Chat: who's needed and why, then a card per section with two-line tasks", () => {
+test("in Google Chat: each section's card, then a line under it tagging the people on those tasks with what to do", () => {
   const settings = { taskUrl: "https://z/{id}", people: [{ email: "tim@zinspector.com", googleChatId: "111" }, { email: "laura@zinspector.com", googleChatId: "222" }] };
   const ago = (days) => new Date(MONDAY.getTime() - days * 864e5).toISOString();
   const tasks = [
@@ -207,21 +207,31 @@ test("in Google Chat: who's needed and why, then a card per section with two-lin
     task({ id: "2", description: "Late one", due: "2026-10-20", status: "In Progress", propertyName: "Marketing.Conferences" }),
     task({ id: "3", description: "Gone quiet", assignee: laura, propertyName: "Marketing.Conferences", lastActivity: ago(20) }),
   ];
-  const { text, cardsV2 } = buildDigest(weekly, tasks, settings, MONDAY);
-  assert.equal(text, [
-      "*Happy Monday, Marketing tasks.* Here's the week ahead.",
-      "🔴 <users/111> → *Close it or set a new date* · <https://z/2|Late one> (6 days overdue)",
-      "🗓️ <users/222> → *Pick a booth* · <https://z/1|Booth call> (due tomorrow at 7:00am)",
-    ].join("\n"));
-  assert.deepEqual(cardsV2.map((c) => c.card.header?.title), ["🔴 Past due · 1", "🗓️ Coming up · 1", "💤 Quiet · 1", undefined]);
-  assert.equal(cardsV2[0].card.header.subtitle, "Already done? Close it in zInspector so it drops off.");
-  assert.deepEqual(cardsV2[1].card.sections[0].widgets[0].decoratedText, {
+  const { messages } = buildDigest(weekly, tasks, settings, MONDAY);
+  assert.equal(messages.length, 5);
+  assert.equal(messages[0].text, "*Happy Monday, Marketing tasks.* Here's the week ahead.");
+  assert.equal(messages[0].cardsV2[0].card.header.title, "🔴 Past due · 1");
+  assert.equal(messages[1].text, "👆 <users/111>: already done? Close it in zInspector so it drops off. Still on it? Set a new date.");
+  assert.equal(messages[2].cardsV2[0].card.header.title, "🗓️ Coming up · 1");
+  // Laura has the next step on the booth call.
+  assert.equal(messages[3].text, "👆 <users/222>: still on track? If plans changed, update the due date.");
+  assert.deepEqual(messages[4].cardsV2.map((c) => c.card.header?.title), ["💤 Quiet · 1", undefined]);
+  assert.equal(messages[4].text, undefined); // quiet: no tags
+  assert.deepEqual(messages[2].cardsV2[0].card.sections[0].widgets[0].decoratedText, {
     text: '<b>Booth call</b><br><font color="#e37400">due tomorrow at 7:00am</font> · <font color="#d93025">Highest priority</font> · Tim Wallace (next: Laura E.) · Next: Pick a booth (1 of 4)',
     wrapText: true,
     button: { text: "Open", onClick: { openLink: { url: "https://z/1" } } },
   }); // one area: no area label; normal priority isn't shown
-  assert.equal(cardsV2[2].card.sections[0].collapsible, true);
-  assert.equal(cardsV2.at(-1).card.sections[0].widgets.at(-1).buttonList.buttons[0].text, "Open the task list");
+  assert.equal(messages[4].cardsV2[0].card.sections[0].collapsible, true);
+  assert.equal(messages[4].cardsV2.at(-1).card.sections[0].widgets.at(-1).buttonList.buttons[0].text, "Open the task list");
+});
+
+test("with only quiet tasks, the greeting rides on the cards", () => {
+  const ago = (days) => new Date(MONDAY.getTime() - days * 864e5).toISOString();
+  const { messages } = buildDigest(weekly, [task({ lastActivity: ago(20) })], {}, MONDAY);
+  assert.equal(messages.length, 1);
+  assert.match(messages[0].text, /^\*Happy Monday/);
+  assert.equal(messages[0].cardsV2[0].card.header.title, "💤 Quiet · 1");
 });
 
 test("the 'plus N more' lines link to the properties those tasks are on, with counts", () => {
@@ -238,7 +248,7 @@ test("the 'plus N more' lines link to the properties those tasks are on, with co
     /^Plus 3 more quiet tasks: <https:\/\/dashboard\.zinspector\.com\/property\/view\/2206214\|BizDev \/ Strategic \(3\)>$/m,
   );
   assert.match(text, /^Plus 1 older task with no activity for over 3 months\. Worth a clean-up\? <https:\/\/dashboard\.zinspector\.com\/property\/view\/903925\|Conferences \(1\)>$/m);
-  const card = JSON.stringify(buildDigest(weekly, tasks, {}, MONDAY).cardsV2);
+  const card = JSON.stringify(buildDigest(weekly, tasks, {}, MONDAY).messages);
   assert.match(card, /<a href=\\"https:\/\/dashboard\.zinspector\.com\/property\/view\/2206214\\">BizDev \/ Strategic \(3\)<\/a>/);
 });
 
@@ -444,9 +454,12 @@ test("with an API key, saving looks up the properties and the summary reads thei
     const reads = calls.api.filter((a) => a.url.pathname === "/api/tasks/");
     assert.deepEqual(reads.map((a) => a.url.searchParams.get("Property")), ["903925", "2206214", "2962118"]);
     assert.equal(reads[0].headers.Origin, ORIGIN);
-    const body = calls.chat.at(-1).body;
-    assert.match(body.text, /\n🔴 <users\/777> → \*Close it or set a new date\* · <https:\/\/dashboard\.zinspector\.com\/task\/view\/2160227\|Idea: a chat message when a task is assigned to you> \(5 days overdue\)\n🗓️ <users\/777> → \*Get attendee list\* · <[^|]+\|Conference: PTN – 2026 RPM Franchise Conference> \(due \w+\)$/);
-    const lines = cardLines(body).join("\n");
+    const posted = calls.chat.map((c) => c.body);
+    // past-due card, its tag line, coming-up card, its tag line, closing card
+    assert.deepEqual(posted.map((b) => (b.cardsV2 ? "card" : "text")), ["card", "text", "card", "text", "card"]);
+    assert.match(posted[1].text, /^👆 <users\/777>: already done\? Close it/);
+    assert.match(posted[3].text, /^👆 <users\/777>: still on track\?/);
+    const lines = posted.flatMap(cardLines).join("\n");
     // Two areas in this summary, so each task says which.
     assert.match(lines, /## 🔴 Past due · 1\nBizDev \/ Strategic \| <b>Idea: a chat message[^<]*<\/b><br><font color="#d93025">5 days overdue<\/font> · Tim Wallace\n/);
     assert.match(lines, /## 🗓️ Coming up · 1\nConferences \| <b>Conference: PTN[^<]*<\/b><br><font color="#5f6368">due \w+<\/font> · Tim Wallace · Next: Get attendee list \(1 of 2\)/);
@@ -493,8 +506,8 @@ test("Preview the summary shows the text with the form's unsaved settings, and p
     assert.equal((await preview({})).empty, true); // the task has no due date
     const r = await preview({ onlyDated: false, intro: "Hello [Chat name]" });
     assert.equal(r.ok, true);
-    assert.match(r.preview, /^Hello Mkt/);
-    assert.ok(r.cards.length >= 2);
+    assert.match(r.messages[0].text, /^Hello Mkt/);
+    assert.ok(r.messages.length >= 1 && r.messages[0].cards.length >= 2);
     assert.equal(calls.length, posted);
     const saved = (await (await admin(env, "GET", "/api/state")).json()).connections[0].summary;
     assert.equal(saved.intro, ""); // previewing doesn't save
