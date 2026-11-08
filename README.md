@@ -43,26 +43,27 @@ Messages about one task share a Google Chat thread. To tell what changed, the ap
 the 300 most recently seen tasks per chat. Messages still on an earlier default switch to the current one;
 edited messages stay as written.
 
-**Summary** (per chat, in its Settings): one line that @mentions everyone on the listed tasks (when their chat id
-is on file under People), then a card with the open tasks by urgency, each laid out like the alert cards:
+**Summary** (per chat, in its Settings): the greeting and who's needed for what (each person @mentioned when their
+chat id is on file under People), then a card per section, each task in two lines:
 
 ```
-Happy Monday, zMarketing. Here's the week ahead. @Tim @Athina @Laura
-┌────────────────────────────────────────────────────────────┐
-│ Week of Nov 9 · 3 past due · 2 coming up · 5 quiet         │
-│ Past due · already done? Close it in zInspector so it drops off.
-│ 📄 Conferences                                              │
-│    PTN – 2026 RPM Franchise Conference              [Open] │
-│ 🕒 12 days overdue · Normal priority                        │
-│    Laura E. (next to-do) · Approval Requested               │
-│ 🔖 Next: Get attendee list (5 of 6 done)                    │
-│ Coming up (next 10 days)                                    │
-│ 📄 BizDev / Strategic … 🕒 Due tomorrow at 7:00am · High priority
-│ …                                     [Open the task list]   │
-└────────────────────────────────────────────────────────────┘
+Happy Monday, zMarketing. Here's the week ahead.
+Who's needed: @Athina: 1 past due, 1 coming up · @Tim: 1 past due · Laura E.: 2 past due
+
+┌ 🔴 Past due · 3 ─ Already done? Close it in zInspector so it drops off. ┐
+│ PTN – 2026 RPM Franchise Conference, October 25 - 27, Dallas TX  [Open] │
+│ 12 days overdue · Laura E. (next to-do) · Next: Get attendee list (5 of 6)
+└──────────────────────────────────────────────────────────────────────────┘
+┌ 🗓️ Coming up · 2 ─ Due in the next 10 days ─────────────────────────────┐
+│ Fwd: NARPM Broker Owner floorplan – meet 11-12 to pick booth     [Open] │
+│ due Thu · Highest priority · Athina G. (next to-do)                      │
+└──────────────────────────────────────────────────────────────────────────┘
+┌ 💤 Quiet · 5 ─ No activity for 14+ days. Still on your radar? (collapsed)┐
+Plus 74 older tasks with no activity for over 3 months. Worth a clean-up? Conferences (40), …
+Anything stuck, or already done? Reply in this thread.        [Open the task list]
 ```
 
-Slack gets the same summary as text. Each chat chooses:
+Priority shows only when it's high or highest; the area shows when the summary covers more than one. Slack gets the same summary as text. Each chat chooses:
 
 - **Post it on**: any days of the week (shortcuts: Weekdays, Mondays only, Every day, Off), **at** any hour from
   6:30am to 6:30pm Pacific. The chat's card shows it ("Summary: Weekdays at 8:30am"). The suggested opening
