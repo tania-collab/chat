@@ -245,7 +245,8 @@ export function buildDigest(connection, tasks, settings = {}, now = new Date(), 
       ).values(),
     ];
     if (people.length) messages.push({ text: `👆 ${people.map(tag).join(" · ")}: ${TAG_LINE}` });
-    return { messages, threadKey: `summary-${connection.id || "chat"}-${today}` };
+    // A thread per summary sent (not per day), so sending it again starts a new one.
+    return { messages, threadKey: `summary-${connection.id || "chat"}-${now.getTime()}` };
   }
 
   const sections = parts.map((p) => [p.heading, ...p.shown.map(line), p.more].filter(Boolean).join("\n")).concat(extras);

@@ -209,7 +209,9 @@ test("in Google Chat: one message with the cards, then one reply tagging each pe
     task({ id: "3", description: "Gone quiet", assignee: laura, propertyName: "Marketing.Conferences", lastActivity: ago(20) }),
   ];
   const { messages, threadKey } = buildDigest({ ...weekly, id: "c1" }, tasks, settings, MONDAY);
-  assert.equal(threadKey, "summary-c1-2026-10-26");
+  assert.equal(threadKey, `summary-c1-${MONDAY.getTime()}`);
+  // Sent again the same day, it starts its own thread.
+  assert.notEqual(buildDigest({ ...weekly, id: "c1" }, tasks, settings, new Date(MONDAY.getTime() + 60000)).threadKey, threadKey);
   assert.equal(messages.length, 2);
   assert.equal(messages[0].text, "*Happy Monday, Marketing tasks.* Here's the week ahead.");
   assert.deepEqual(messages[0].cardsV2.map((c) => c.card.header?.title), ["🔴 Past due · 1", "🗓️ Coming up · 2", "💤 Quiet · 1", undefined]);
