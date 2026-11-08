@@ -229,23 +229,22 @@ export function buildDigest(connection, tasks, settings = {}, now = new Date(), 
     rotate(weekly ? CLOSERS.weekly : CLOSERS.daily, today),
   ].filter(Boolean);
 
-  // Google Chat: the greeting with a card per section, then one reply in its thread tagging the people with the
-  // next step on past-due and coming-up tasks (cards can't @mention), a line per section saying what to do. Each
-  // person is @mentioned once, on their first line; later lines name them without a second ping.
+  // Google Chat: the greeting with a card per section, then one reply in its thread tagging, once each, the people
+  // with the next step on past-due and coming-up tasks (cards can't @mention), and saying what to do.
   if (connection.platform === "google-chat" && format !== "text") {
     const areas = new Set(parts.flatMap((p) => p.shown).map((t) => t.propertyName || ""));
     const messages = [{ text: intro, cardsV2: digestCards({ parts, extras, notes, summary, showArea: areas.size > 1 }, settings) }];
-    const tagged = new Set();
-    const lines = parts
-      .filter((p) => TAG_HINT[p.kind])
-      .map((p) => {
-        const people = [...new Map(p.shown.map(nextStepPerson).filter(Boolean).map((x) => [x.name, x])).values()];
-        if (!people.length) return "";
-        const names = people.map((x) => (tagged.has(x.name) ? `*${x.name}*` : (tagged.add(x.name), tag(x))));
-        return `👆 ${CARD_EMOJI[p.kind]} ${SECTION_NAME[p.kind]}: ${names.join(" · ")}: ${TAG_HINT[p.kind]}`;
-      })
-      .filter(Boolean);
-    if (lines.length) messages.push({ text: lines.join("\n") });
+    // Everyone with a next step on a past-due or coming-up task, once each, past due first.
+    const people = [
+      ...new Map(
+        parts
+          .filter((p) => p.kind === "overdue" || p.kind === "coming")
+          .flatMap((p) => p.shown.map(nextStepPerson))
+          .filter(Boolean)
+          .map((x) => [x.name, x]),
+      ).values(),
+    ];
+    if (people.length) messages.push({ text: `👆 ${people.map(tag).join(" · ")}: ${TAG_LINE}` });
     return { messages, threadKey: `summary-${connection.id || "chat"}-${today}` };
   }
 
@@ -268,14 +267,8 @@ function nextStepPerson(t) {
   return realPerson(t.nextPerson || (t.next ? { name: t.next } : null)) || t.owner?.person || null;
 }
 
-const CARD_EMOJI = { overdue: "🔴", coming: "🗓️" };
-const SECTION_NAME = { overdue: "Past due", coming: "Coming up" };
-
-// What the tag line under a card asks of the people on those tasks.
-const TAG_HINT = {
-  overdue: "already done? Close it in zInspector so it drops off. Still on it? Set a new date.",
-  coming: "still on track? If plans changed, update the due date.",
-};
+// The reply under the summary, after the tags.
+const TAG_LINE = "you have tasks above. Already done? Close it in zInspector so it drops off. Plans changed? Update the due date.";
 
 const COLOR = { overdue: "#d93025", highest: "#d93025", high: "#e8710a", soon: "#e37400", later: "#5f6368", quiet: "#5f6368", none: "#5f6368" };
 const CARD_HEAD = {
