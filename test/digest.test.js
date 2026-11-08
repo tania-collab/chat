@@ -224,6 +224,24 @@ test("in Google Chat, a line tags the people on the listed tasks and each task i
   assert.equal(sections.at(-1).widgets.at(-1).buttonList.buttons[0].text, "Open the task list");
 });
 
+test("the 'plus N more' lines link to the properties those tasks are on, with counts", () => {
+  const ago = (days) => new Date(MONDAY.getTime() - days * 864e5).toISOString();
+  const on = (propertyId, propertyName, i) => task({ id: `${propertyId}-${i}`, description: `Quiet ${propertyId} ${i}`, propertyId, propertyName, lastActivity: ago(15 + i) });
+  const tasks = [
+    ...Array.from({ length: 4 }, (_, i) => on(952923, "Marketing.BizDev.Company", i)),
+    ...Array.from({ length: 4 }, (_, i) => on(2206214, "Marketing.BizDev.Strategic", i + 4)),
+    task({ id: "old", description: "Ancient", propertyId: 903925, propertyName: "Marketing.Conferences", lastActivity: ago(400) }),
+  ];
+  const { text } = buildText(weekly, tasks, {}, MONDAY);
+  assert.match(
+    text,
+    /^Plus 3 more quiet tasks: <https:\/\/dashboard\.zinspector\.com\/property\/view\/2206214\|BizDev \/ Strategic \(3\)>$/m,
+  );
+  assert.match(text, /^Plus 1 older task with no activity for over 3 months\. Worth a clean-up\? <https:\/\/dashboard\.zinspector\.com\/property\/view\/903925\|Conferences \(1\)>$/m);
+  const card = JSON.stringify(buildDigest(weekly, tasks, {}, MONDAY).cardsV2);
+  assert.match(card, /<a href=\\"https:\/\/dashboard\.zinspector\.com\/property\/view\/2206214\\">BizDev \/ Strategic \(3\)<\/a>/);
+});
+
 test("a task's pending to-do shows under it", () => {
   const t = task({ due: "2026-10-27", todo: { next: "Get attendee list", done: 5, total: 6 } });
   assert.match(buildText(weekly, [t], {}, MONDAY).text, /— due tomorrow · \*Tim Wallace\*\n      ➡️ Next: Get attendee list _\(5 of 6 done\)_$/m);
