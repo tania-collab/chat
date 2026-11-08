@@ -8,6 +8,14 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 const SHORT_TEXT = 280;
 const TITLE_MAX = 90;
 
+// "High priority" and its tone (for the cards' colors).
+export function priorityOf(p) {
+  return {
+    label: `${PRIORITY[p] || "Normal"} priority`,
+    tone: p >= 5 ? "highest" : p === 4 ? "high" : p != null && p <= 2 ? "low" : "normal",
+  };
+}
+
 // The fields worth comparing between two events of the same task.
 export function snapshotOf(data = {}) {
   const person = data.assignedTo || data.assignedToContact || null;
@@ -83,8 +91,8 @@ export function taskExtras({ event, previous, kind, link, mentionOf }) {
     managerName: sameName(data.manager, now.assignee) ? "" : firstName(text(data.manager)),
     dueLabel: dueLabel(now.due),
     dueTone: dueTone(now.due),
-    priorityLabel: `${PRIORITY[now.priority] || "Normal"} priority`,
-    priorityTone: now.priority >= 5 ? "highest" : now.priority === 4 ? "high" : now.priority != null && now.priority <= 2 ? "low" : "normal",
+    priorityLabel: priorityOf(now.priority).label,
+    priorityTone: priorityOf(now.priority).tone,
     finishLabel: finishLabel(now.status, now.due),
     assigneeFirstName: firstName(now.assignee?.name),
     // The rest of the description, when the title above had to cut it short.
@@ -192,7 +200,7 @@ function formatDue(v) {
 }
 
 // "Marketing.BizDev.Company" → "BizDev / Company", "Marketing.01.Inbox" → "Inbox".
-function shortArea(property) {
+export function shortArea(property) {
   const parts = String(property || "").split(".").filter((p) => p && !/^\d+$/.test(p));
   return (parts.length > 1 ? parts.slice(1) : parts).join(" / ");
 }

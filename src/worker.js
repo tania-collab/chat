@@ -156,7 +156,7 @@ async function sendDigest(env, connection, now = new Date(), cache = new Map(), 
   const pulse = !fromZinspector && summary.postDays.length === 1;
   const payload = buildDigest(connection, tasks, settings, now, { pulse, preview });
   if (!payload) return null;
-  if (preview) return { ok: true, preview: payload.text };
+  if (preview) return { ok: true, preview: payload.text, card: payload.cardsV2?.[0]?.card || null };
   const res = await fetch(connection.chatUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=UTF-8" },
