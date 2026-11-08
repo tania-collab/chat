@@ -40,7 +40,7 @@ export const ADMIN_HTML = String.raw`<!doctype html>
   button:disabled { opacity: .6; cursor: default; }
   label { display: block; font-weight: 500; margin: 12px 0 4px; }
   .hint { color: var(--muted); font-size: 13px; font-weight: 400; }
-  input[type=text], input[type=url], input[type=password], input[type=search], select {
+  input[type=text], input[type=url], input[type=password], input[type=search], input[type=number], select {
     width: 100%; font: inherit; color: var(--text); background: var(--bg);
     border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
   .checks label { display: inline-flex; gap: 6px; align-items: center; font-weight: 400; margin: 4px 16px 0 0; }
@@ -138,12 +138,16 @@ export const ADMIN_HTML = String.raw`<!doctype html>
     <div class="hint">A friendly list of open tasks by urgency (past due, coming up, no date, gone quiet), each tagging the people on it. Nothing is posted when there's nothing to list.</div>
     <div class="split" style="margin-top:4px">
       <div>
-        <label for="f-schedule">Post it</label>
-        <select id="f-schedule"></select>
+        <label>Post it on</label>
+        <div class="checks" id="f-postDays"></div>
+        <div class="details" id="f-postPresets"></div>
+        <label for="f-hour">At <span class="hint">Pacific time</span></label>
+        <select id="f-hour"></select>
       </div>
       <div>
-        <label for="f-days">Tasks due within</label>
-        <select id="f-days"></select>
+        <label for="f-days">Coming up <span class="hint">tasks due within the next</span></label>
+        <div class="row"><input type="number" id="f-days" min="1" max="60" style="width:96px"> <span>days</span></div>
+        <div class="details" id="f-dayPresets"></div>
       </div>
     </div>
     <div class="checks" style="margin-top:8px">

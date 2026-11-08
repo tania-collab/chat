@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildDigest, isSummaryTime, selectTasks, summaryOf, SUMMARY_DEFAULTS, DEFAULT_INTRO, CLOSERS } from "../src/digest.js";
+import { buildDigest, isSummaryTime, describeSchedule, selectTasks, summaryOf, SUMMARY_DEFAULTS, DEFAULT_INTRO, CLOSERS } from "../src/digest.js";
 import worker from "../src/worker.js";
 import { makeEnv, admin, hook, withChat, created, withStatus, GCHAT_URL, ORIGIN } from "./helpers.js";
 
@@ -13,20 +13,28 @@ let nextId = 1;
 const task = (over) => ({ id: String(nextId++), status: "New", assignee: tim, description: "A task", due: null, next: "", ...over });
 const all = { ...SUMMARY_DEFAULTS, onlyDated: false, onlyAssigned: false, days: 30 };
 
-test("daily summaries go out weekday mornings, weekly ones Monday mornings, 8:30 Pacific all year", () => {
-  assert.equal(isSummaryTime("weekly", new Date("2026-10-26T15:30:00Z")), true); // Monday, PDT
-  assert.equal(isSummaryTime("weekly", new Date("2026-10-26T16:30:00Z")), false); // 9:30
-  assert.equal(isSummaryTime("weekly", new Date("2026-12-07T16:30:00Z")), true); // Monday, PST
-  assert.equal(isSummaryTime("weekly", new Date("2026-12-08T16:30:00Z")), false); // Tuesday
-  assert.equal(isSummaryTime("daily", new Date("2026-12-08T16:30:00Z")), true); // Tuesday
-  assert.equal(isSummaryTime("daily", new Date("2026-12-12T16:30:00Z")), false); // Saturday
-  assert.equal(isSummaryTime("off", new Date("2026-12-07T16:30:00Z")), false);
+test("a summary goes out on the chat's days at its hour and 30 minutes, Pacific time all year", () => {
+  const at = (postDays, hour, iso) => isSummaryTime({ postDays, hour }, new Date(iso));
+  assert.equal(at(["Mon"], 8, "2026-10-26T15:30:00Z"), true); // Monday 8:30 PDT
+  assert.equal(at(["Mon"], 8, "2026-10-26T16:30:00Z"), false); // 9:30
+  assert.equal(at(["Mon"], 8, "2026-12-07T16:30:00Z"), true); // Monday 8:30 PST
+  assert.equal(at(["Mon"], 8, "2026-12-08T16:30:00Z"), false); // Tuesday
+  assert.equal(at(["Mon", "Wed", "Fri"], 14, "2026-12-09T22:30:00Z"), true); // Wednesday 2:30pm
+  assert.equal(at(["Sat"], 8, "2026-12-12T16:30:00Z"), true);
+  assert.equal(at([], 8, "2026-12-07T16:30:00Z"), false); // off
+  assert.equal(describeSchedule({ postDays: ["Mon", "Tue", "Wed", "Thu", "Fri"], hour: 8 }), "Weekdays at 8:30am");
+  assert.equal(describeSchedule({ postDays: ["Mon"], hour: 8 }), "Mondays at 8:30am");
+  assert.equal(describeSchedule({ postDays: ["Mon", "Wed", "Fri"], hour: 14 }), "Mon, Wed, Fri at 2:30pm");
+  assert.equal(describeSchedule({ postDays: [], hour: 8 }), "Off");
 });
 
-test("chats from before the summary keep their weekly digest, or stay off if it was off", () => {
-  assert.equal(summaryOf({}).schedule, "weekly");
-  assert.equal(summaryOf({ alerts: { digest: false } }).schedule, "off");
-  assert.equal(summaryOf({ alerts: { digest: false }, summary: { schedule: "daily" } }).schedule, "daily");
+test("chats from before keep their schedule: weekly digest, daily or weekly summary, or off", () => {
+  assert.deepEqual(summaryOf({}).postDays, ["Mon"]);
+  assert.deepEqual(summaryOf({ alerts: { digest: false } }).postDays, []);
+  assert.deepEqual(summaryOf({ summary: { schedule: "daily" } }).postDays, ["Mon", "Tue", "Wed", "Thu", "Fri"]);
+  assert.deepEqual(summaryOf({ summary: { schedule: "weekly" } }).postDays, ["Mon"]);
+  assert.deepEqual(summaryOf({ alerts: { digest: false }, summary: { schedule: "daily" } }).postDays.length, 5);
+  assert.equal(summaryOf({}).hour, 8);
 });
 
 test("lists open tasks due within the window plus overdue ones, filtered as the chat chose", () => {
@@ -193,26 +201,29 @@ test("without an API key, Send the summary now lists the tasks the app has seen"
   });
 });
 
-test("the cron sends daily summaries on weekdays and weekly ones on Mondays, at 8:30 Pacific", async () => {
+test("the hourly cron sends each chat's summary on its days at its hour, and any number of days ahead is kept", async () => {
   const env = makeEnv();
-  const make = async (name, schedule) =>
-    (await admin(env, "POST", "/api/connections", { name, platform: "google-chat", chatUrl: GCHAT_URL, summary: { schedule, onlyDated: false } })).json();
-  const d = await make("D", "daily");
-  const w = await make("W", "weekly");
-  await make("O", "off");
+  const make = async (name, summary) =>
+    (await admin(env, "POST", "/api/connections", { name, platform: "google-chat", chatUrl: GCHAT_URL, summary: { onlyDated: false, ...summary } })).json();
+  const d = await make("D", { postDays: ["Mon", "Tue", "Wed", "Thu", "Fri"], hour: 8, days: 5 });
+  const w = await make("W", { postDays: ["Mon"], hour: 8, days: 10 });
+  const a = await make("A", { postDays: ["Tue", "Thu"], hour: 15, days: 15 });
+  await make("O", { postDays: [] });
+  assert.deepEqual([d.summary.days, w.summary.days, a.summary.days], [5, 10, 15]);
+  assert.equal((await make("X", { days: 61 })).summary.days, 7); // out of range: the default
   await withChat(200, async (calls) => {
-    await hook(env, d.id, created);
-    await hook(env, w.id, created);
+    for (const c of [d, w, a]) await hook(env, c.id, { ...created, data: { ...created.data, description: c.name } });
     const run = async (iso) => {
       const before = calls.length;
       const pending = [];
       await worker.scheduled({ scheduledTime: Date.parse(iso) }, env, { waitUntil: (p) => pending.push(p) });
       await Promise.all(pending);
-      return calls.slice(before).map((c) => (c.body.text.match(/Monday/) ? "weekly" : "daily"));
+      return calls.slice(before).map((c) => c.body.text.match(/\|(D|W|A)>/)[1]);
     };
-    assert.deepEqual(await run("2026-10-26T16:30:00Z"), []); // 9:30 Pacific
-    assert.deepEqual(await run("2026-10-26T15:30:00Z"), ["daily", "weekly"]); // Monday
-    assert.deepEqual(await run("2026-10-27T15:30:00Z"), ["daily"]); // Tuesday
+    assert.deepEqual(await run("2026-10-26T16:30:00Z"), []); // Monday 9:30 Pacific
+    assert.deepEqual(await run("2026-10-26T15:30:00Z"), ["D", "W"]); // Monday 8:30
+    assert.deepEqual(await run("2026-10-27T15:30:00Z"), ["D"]); // Tuesday 8:30
+    assert.deepEqual(await run("2026-10-27T22:30:00Z"), ["A"]); // Tuesday 3:30pm
     assert.deepEqual(await run("2026-10-31T15:30:00Z"), []); // Saturday
   });
 });
