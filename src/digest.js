@@ -1,10 +1,8 @@
-// The summary: one message per chat, daily (weekday mornings) or weekly (Monday morning), listing the open tasks
-// due in the coming days per person, overdue first. Each chat picks what it lists (summaryOf). The tasks come
+// The summary: one message per chat on the days and hour it chooses, listing the open tasks by urgency. Each chat picks what it lists (summaryOf). The tasks come
 // from zInspector (summary.js reads them) or, without an API key, from the tasks the app has seen.
 
 import { DEFAULT_COMPLETED, mentionFor, taskUrl } from "./messages.js";
 import { TIME_ZONE, localDate } from "./time.js";
-export const SUMMARY_HOUR = 8;
 const DASHBOARD = "https://dashboard.zinspector.com/";
 const TASKS_PER_SECTION = 10;
 const QUIET_SHOWN = 8;
@@ -19,12 +17,11 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-export const SCHEDULES = {
-  off: "Off",
-  daily: "Daily, weekday mornings (8:30am Pacific)",
-  weekly: "Weekly, Monday mornings (8:30am Pacific)",
-};
-export const SUMMARY_DAYS = [1, 3, 7, 14, 30];
+// When a chat's summary is posted: on these weekdays (none = off), at this hour and 30 minutes, Pacific time.
+export const POST_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+export const POST_HOURS = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+// How many days ahead "coming up" looks.
+export const MAX_DAYS_AHEAD = 60;
 // How far back overdue tasks are listed (0 = all), so tasks forgotten long ago don't fill the list.
 export const OVERDUE_WITHIN = [7, 30, 90, 0];
 // "Going quiet": open tasks with no activity for this many days (0 = off), whatever their due date.
@@ -37,7 +34,8 @@ export const OWNERS = {
   anyone: "Assigned, next to-do, or the manager",
 };
 export const SUMMARY_DEFAULTS = {
-  schedule: "weekly",
+  postDays: ["Mon"],
+  hour: 8,
   days: 7,
   onlyProperties: false,
   properties: [], // [{label, name, ids}]: a name ("Marketing.Comms", or "Marketing.BizDev*" for all that start so) and/or ids
@@ -51,24 +49,38 @@ export const SUMMARY_DEFAULTS = {
 
 // A chat's summary settings. Chats from before the summary had the weekly digest on unless turned off.
 export function summaryOf(connection) {
-  const { onlyAssigned, ...saved } = connection.summary || {};
-  const schedule = SCHEDULES[saved.schedule] ? saved.schedule : connection.alerts?.digest === false ? "off" : SUMMARY_DEFAULTS.schedule;
+  const { onlyAssigned, schedule, ...saved } = connection.summary || {};
+  // Before the days were chosen one by one, a summary was daily (weekdays), weekly (Mondays) or off.
+  const fromSchedule = { daily: POST_DAYS.slice(0, 5), weekly: ["Mon"], off: [] }[schedule];
+  const postDays = Array.isArray(saved.postDays)
+    ? saved.postDays
+    : fromSchedule || (connection.alerts?.digest === false ? [] : SUMMARY_DEFAULTS.postDays);
   // "Only tasks with someone assigned" was a checkbox before the owners choice.
   const owners = OWNERS[saved.owners] ? saved.owners : onlyAssigned === true ? "assigned" : onlyAssigned === false ? "anyone" : SUMMARY_DEFAULTS.owners;
-  return { ...SUMMARY_DEFAULTS, ...saved, schedule, owners };
+  return { ...SUMMARY_DEFAULTS, ...saved, postDays, owners };
 }
 
-// True when a summary on this schedule is due: 8am hour Pacific (the cron runs at 15:30 and 16:30 UTC so one
-// of them is 8:30 whether or not daylight saving is on), Monday to Friday for daily, Monday for weekly.
-export function isSummaryTime(schedule, now = new Date()) {
+// True when a chat's summary is due: one of its days, in its hour, Pacific time (the cron runs every hour at
+// :30, so a summary goes out at 8:30 for hour 8).
+export function isSummaryTime(summary, now = new Date()) {
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat("en-US", { timeZone: TIME_ZONE, weekday: "short", hour: "numeric", hour12: false })
       .formatToParts(now)
       .map((p) => [p.type, p.value]),
   );
-  if (Number(parts.hour) !== SUMMARY_HOUR) return false;
-  if (schedule === "weekly") return parts.weekday === "Mon";
-  return schedule === "daily" && !["Sat", "Sun"].includes(parts.weekday);
+  return summary.postDays.includes(parts.weekday) && Number(parts.hour) % 24 === summary.hour;
+}
+
+// "Weekdays at 8:30am", "Mondays at 8:30am", "Mon, Wed, Fri at 2:30pm", or "Off".
+export function describeSchedule(summary) {
+  const days = summary.postDays;
+  if (!days.length) return "Off";
+  const when = days.length === 7 ? "Every day" : days.join() === POST_DAYS.slice(0, 5).join() ? "Weekdays" : days.length === 1 ? `${days[0]}days` : days.join(", ");
+  return `${when.replace(/^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)days$/, (m, d) => ({ Mon: "Mondays", Tue: "Tuesdays", Wed: "Wednesdays", Thu: "Thursdays", Fri: "Fridays", Sat: "Saturdays", Sun: "Sundays" })[d])} at ${hourLabel(summary.hour)}`;
+}
+
+export function hourLabel(hour) {
+  return `${hour % 12 || 12}:30${hour < 12 ? "am" : "pm"}`;
 }
 
 // Whether a task is on one of the chosen properties: by id, exact name, or name start ("Marketing.BizDev*").
@@ -144,9 +156,11 @@ export function buildDigest(connection, tasks, settings = {}, now = new Date(), 
     "Due count": String(coming),
     "Overdue count": String(overdue),
   };
-  // The default opening and closing lines rotate by day, so the summary doesn't read the same every morning.
-  const weekly = summary.schedule === "weekly";
-  const intro = fill(summary.intro || rotate(weekly ? DEFAULT_INTRO.weekly : DEFAULT_INTRO.daily, today), values);
+  // The default opening and closing lines rotate by day, so the summary doesn't read the same every morning;
+  // Mondays get the start-of-the-week ones.
+  const weekly = WEEKDAYS[new Date(`${today}T00:00:00Z`).getUTCDay()] === "Mon";
+  const openers = weekly ? DEFAULT_INTRO.weekly : summary.hour >= 12 ? DEFAULT_INTRO.afternoon : DEFAULT_INTRO.daily;
+  const intro = fill(summary.intro || rotate(openers, today), values);
   const counts = [
     coming && `${coming} coming up ${summary.days === 1 ? "by tomorrow" : `in the next ${summary.days} days`}`,
     overdue && `${overdue} past due`,
@@ -187,6 +201,10 @@ export const DEFAULT_INTRO = {
     "☀️ *Good morning, [Chat name]!* Here's what's on deck today, plus a few things that could use a little love 👇",
     "☕ *Morning, [Chat name]!* Curious what today holds? Here's where things stand 👇",
     "👋 *Hey [Chat name]!* Fresh day, fresh momentum. Here's your lineup 👇",
+  ],
+  afternoon: [
+    "🌤️ *Afternoon, [Chat name]!* Here's a quick look at where things stand 👇",
+    "👋 *Hey [Chat name]!* Quick check-in before the day wraps up 👇",
   ],
   weekly: [
     "👋 *Happy Monday, [Chat name]!* New week, clean slate. Here's what's coming up 👇",

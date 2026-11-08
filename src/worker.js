@@ -9,7 +9,7 @@
 
 import { DEFAULT_COMPLETED, buildMessage, buildPayload, cardFor, skipReason, SKIP_REASONS, AUDIENCES, ALERTS, alertsOf, eventKind, deliveryUrl, render, fieldPaths, templateFor, EVENTS, EXAMPLES, EXAMPLE_PREVIOUS, TEST_MESSAGE } from "./messages.js";
 import { snapshotOf, EXTRA_NAMES } from "./taskview.js";
-import { buildDigest, isSummaryTime, summaryOf, SCHEDULES, SUMMARY_DAYS, OVERDUE_WITHIN, QUIET_DAYS, OWNERS, DEFAULT_INTRO, INTRO_DETAILS } from "./digest.js";
+import { buildDigest, isSummaryTime, summaryOf, describeSchedule, POST_DAYS, POST_HOURS, MAX_DAYS_AHEAD, OVERDUE_WITHIN, QUIET_DAYS, OWNERS, DEFAULT_INTRO, INTRO_DETAILS } from "./digest.js";
 import { zinspectorConfigured, readsZinspector, openTasksOn, resolveProperties, searchProperties, ZinspectorError } from "./summary.js";
 import {
   getConnections,
@@ -37,8 +37,7 @@ function withDates(snapshot, previous, event, kind, settings) {
 }
 
 export default {
-  // Cron (wrangler.toml) fires daily at 15:30 and 16:30 UTC; whichever is 8:30am Pacific sends the summaries
-  // that are due (daily ones on weekdays, weekly ones on Mondays).
+  // Cron (wrangler.toml) fires every hour at :30; each chat's summary goes out on its days, at its hour (Pacific).
   async scheduled(controller, env, ctx) {
     if (!env.RELAY) return;
     ctx.waitUntil(sendDigests(env, new Date(controller.scheduledTime)));
@@ -112,7 +111,7 @@ async function relay(request, env, id) {
 }
 
 async function sendDigests(env, now) {
-  const due = (await getConnections(env.RELAY)).filter((c) => isSummaryTime(summaryOf(c).schedule, now));
+  const due = (await getConnections(env.RELAY)).filter((c) => isSummaryTime(summaryOf(c), now));
   const cache = new Map(); // one zInspector read per property for all chats
   for (const connection of due) {
     try {
@@ -146,7 +145,8 @@ async function sendDigest(env, connection, now = new Date(), cache = new Map(), 
   } else {
     tasks = Object.entries(activity.tasks || {}).map(([id, t]) => ({ id, ...t }));
   }
-  const pulse = !fromZinspector && summary.schedule === "weekly";
+  // Last week's numbers fit a summary posted once a week.
+  const pulse = !fromZinspector && summary.postDays.length === 1;
   const payload = buildDigest(connection, tasks, settings, now, { pulse, preview });
   if (!payload) return null;
   if (preview) return { ok: true, preview: payload.text };
@@ -230,6 +230,7 @@ async function api(request, env, url, user) {
           templates: Object.fromEntries(EVENTS.map((e) => [e.key, templateFor(c, e.key)])),
           alerts: alertsOf(c),
           summary: summaryOf(c),
+          summaryWhen: describeSchedule(summaryOf(c)),
           health: health((await getActivity(kv, c.id)).entries),
         })),
       ),
@@ -240,8 +241,9 @@ async function api(request, env, url, user) {
       audiences: AUDIENCES,
       alerts: ALERTS,
       skipReasons: SKIP_REASONS,
-      schedules: SCHEDULES,
-      summaryDays: SUMMARY_DAYS,
+      postDays: POST_DAYS,
+      postHours: POST_HOURS,
+      maxDaysAhead: MAX_DAYS_AHEAD,
       overdueWithin: OVERDUE_WITHIN,
       owners: OWNERS,
       quietDays: QUIET_DAYS,

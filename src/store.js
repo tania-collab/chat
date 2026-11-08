@@ -1,7 +1,7 @@
 // Connections, settings and delivery logs, kept in the Workers KV namespace bound as RELAY.
 
 import { PLATFORMS, DEFAULT_COMPLETED, DEFAULT_TASK_URL, EVENTS, MAX_TEMPLATE, AUDIENCES, DEFAULT_AUDIENCE, ALERTS } from "./messages.js";
-import { SCHEDULES, SUMMARY_DAYS, OVERDUE_WITHIN, QUIET_DAYS, OWNERS, SUMMARY_DEFAULTS, MAX_PROPERTIES, summaryOf } from "./digest.js";
+import { POST_DAYS, POST_HOURS, MAX_DAYS_AHEAD, OVERDUE_WITHIN, QUIET_DAYS, OWNERS, SUMMARY_DEFAULTS, MAX_PROPERTIES, summaryOf } from "./digest.js";
 
 const LOG_SIZE = 20;
 const MAX_PEOPLE = 5000;
@@ -97,8 +97,9 @@ export function cleanSummary(input, current) {
       }))
     : current.properties;
   return {
-    schedule: SCHEDULES[input.schedule] ? input.schedule : current.schedule,
-    days: SUMMARY_DAYS.includes(Number(input.days)) ? Number(input.days) : current.days || SUMMARY_DEFAULTS.days,
+    postDays: Array.isArray(input.postDays) ? POST_DAYS.filter((d) => input.postDays.includes(d)) : current.postDays,
+    hour: POST_HOURS.includes(Number(input.hour)) ? Number(input.hour) : current.hour,
+    days: Number.isInteger(Number(input.days)) && input.days >= 1 && input.days <= MAX_DAYS_AHEAD ? Number(input.days) : current.days || SUMMARY_DEFAULTS.days,
     onlyProperties: flag("onlyProperties"),
     properties,
     onlyDated: flag("onlyDated"),

@@ -66,8 +66,10 @@ Open zInspector →
 
 The suggested opening and closing lines change from day to day so it never reads the same. It's a message rather than a card because chat cards can't @mention anyone. Each chat chooses:
 
-- **Post it**: off, daily (weekday mornings) or weekly (Monday mornings), at 8:30am Pacific.
-- **Tasks due within**: tomorrow, or the next 3, 7, 14 or 30 days.
+- **Post it on**: any days of the week (shortcuts: Weekdays, Mondays only, Every day, Off), **at** any hour from
+  6:30am to 6:30pm Pacific. The chat's card shows it ("Summary: Weekdays at 8:30am"). Mondays open with a
+  start-of-the-week line; afternoon summaries with an afternoon one.
+- **Coming up**: tasks due within the next 1 to 60 days (shortcuts: 3, 5, 7, 10, 15).
 - **Only these properties**: with a zInspector API key, search zInspector's properties by name and tick the ones to
   include. Without a key, type them one per line as zInspector names them (`Marketing.Conferences`), ending with `*`
   for every property that starts with it (`Marketing.BizDev*`).
@@ -85,8 +87,8 @@ The suggested opening and closing lines change from day to day so it never reads
 Nothing is posted when nothing matches. **Preview the summary** in the settings shows what the chat would get,
 without posting or saving. **Send the summary now** on a chat's card posts it right away. With a zInspector API key (below) and chosen
 properties, the summary reads every open task on those properties from zInspector when it's sent. Without them, it
-lists the tasks zInspector has sent the chat since it was connected. The schedule is the `[triggers]` cron in
-`wrangler.toml`.
+lists the tasks zInspector has sent the chat since it was connected. The `[triggers]` cron in `wrangler.toml` runs
+every hour at :30 and sends the summaries due at that hour.
 
 **What a chat hears about** is set per chat:
 

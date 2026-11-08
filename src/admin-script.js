@@ -139,6 +139,7 @@ function connectionCard(c) {
       el("span", { "class": "name grow", text: c.name }),
       el("span", { "class": "chip on", text: PLATFORM[c.platform] || c.platform })
     ]),
+    el("div", { "class": "hint", text: "Summary: " + (c.summaryWhen || "Off") }),
     c.createdBy ? el("div", { "class": "hint", text: "Added by " + c.createdBy +
       (c.updatedBy && c.updatedBy !== c.createdBy ? " · last changed by " + c.updatedBy : "") }) : null,
     c.token ? null : el("div", { "class": "row", style: "margin-top:8px" }, [
@@ -234,15 +235,18 @@ function openForm(c) {
     box.checked = c && c.alerts ? !!c.alerts[k] : state.alerts[k].on;
     return el("label", {}, [box, document.createTextNode(" " + state.alerts[k].label)]);
   }));
-  var s = c && c.summary ? c.summary : { schedule: "weekly", days: 7, onlyProperties: false, properties: [], onlyDated: true, includeOverdue: true, owners: "assigned-or-next" };
-  $("f-schedule").replaceChildren.apply($("f-schedule"), Object.keys(state.schedules).map(function (k) {
-    return el("option", { value: k, text: state.schedules[k] });
+  var s = c && c.summary ? c.summary : { postDays: ["Mon"], hour: 8, days: 7, onlyProperties: false, properties: [], onlyDated: true, includeOverdue: true, owners: "assigned-or-next" };
+  $("f-postDays").replaceChildren.apply($("f-postDays"), state.postDays.map(function (d) {
+    var box = el("input", { type: "checkbox", "data-day": d });
+    box.checked = s.postDays.indexOf(d) >= 0;
+    box.addEventListener("change", scheduleChanged);
+    return el("label", {}, [box, document.createTextNode(" " + d)]);
   }));
-  $("f-schedule").value = s.schedule;
-  $("f-days").replaceChildren.apply($("f-days"), state.summaryDays.map(function (d) {
-    return el("option", { value: String(d), text: d === 1 ? "tomorrow" : "the next " + d + " days" });
+  $("f-hour").replaceChildren.apply($("f-hour"), state.postHours.map(function (h) {
+    return el("option", { value: String(h), text: (h % 12 || 12) + ":30" + (h < 12 ? "am" : "pm") });
   }));
-  $("f-days").value = String(s.days);
+  $("f-hour").value = String(s.hour == null ? 8 : s.hour);
+  $("f-days").value = String(s.days || 7);
   $("f-onlyProperties").checked = !!s.onlyProperties;
   $("f-properties").value = (s.properties || []).map(function (p) { return p.label; }).join("\n");
   chosen = (s.properties || []).map(function (p) { return { label: p.label, name: p.name, ids: (p.ids || []).slice() }; });
@@ -264,7 +268,7 @@ function openForm(c) {
     return el("option", { value: String(d), text: d ? "no activity for " + d + "+ days" : "off" });
   }));
   $("f-quietDays").value = String(s.quietDays == null ? 14 : s.quietDays);
-  $("f-intro").value = s.intro || (state.summaryIntro[s.schedule] || state.summaryIntro.daily)[0];
+  $("f-intro").value = s.intro || defaultIntro();
   $("f-introDetails").replaceChildren.apply($("f-introDetails"), state.introDetails.map(function (d) {
     return el("button", { type: "button", text: d, on: { click: function () { insertInto($("f-intro"), "[" + d + "]"); } } });
   }));
@@ -431,7 +435,7 @@ function introValue() {
 }
 function summaryForm() {
   var s = {
-    schedule: $("f-schedule").value, days: Number($("f-days").value), onlyProperties: $("f-onlyProperties").checked,
+    postDays: postDays(), hour: Number($("f-hour").value), days: Number($("f-days").value), onlyProperties: $("f-onlyProperties").checked,
     onlyDated: $("f-onlyDated").checked, includeOverdue: $("f-includeOverdue").checked,
     overdueWithin: Number($("f-overdueWithin").value), owners: $("f-owners").value, quietDays: Number($("f-quietDays").value), intro: introValue()
   };
@@ -451,15 +455,38 @@ $("f-summaryPreviewBtn").addEventListener("click", function () {
     box.style.display = "block";
   }).catch(function (err) { $("f-summaryPreviewMsg").textContent = err.message; });
 });
-$("f-schedule").addEventListener("change", function () {
-  // A default opening line follows the schedule (Good morning / Happy Monday).
-  if (!introValue() && state.summaryIntro[$("f-schedule").value]) $("f-intro").value = state.summaryIntro[$("f-schedule").value][0];
-});
+function postDays() {
+  return Array.prototype.filter.call($("f-postDays").querySelectorAll("input"), function (b) { return b.checked; })
+    .map(function (b) { return b.getAttribute("data-day"); });
+}
+// The suggested opening line for the chosen days and time (Happy Monday / Good morning / Afternoon).
+function defaultIntro() {
+  var days = postDays();
+  var list = days.length === 1 && days[0] === "Mon" ? state.summaryIntro.weekly
+    : Number($("f-hour").value) >= 12 ? state.summaryIntro.afternoon : state.summaryIntro.daily;
+  return list[0];
+}
+function scheduleChanged() {
+  if (!introValue()) $("f-intro").value = defaultIntro();
+  showSummary();
+}
+function setDays(days) {
+  Array.prototype.forEach.call($("f-postDays").querySelectorAll("input"), function (b) { b.checked = days.indexOf(b.getAttribute("data-day")) >= 0; });
+  scheduleChanged();
+}
+var PRESETS = [["Weekdays", ["Mon", "Tue", "Wed", "Thu", "Fri"]], ["Mondays only", ["Mon"]], ["Every day", ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]], ["Off", []]];
+$("f-postPresets").replaceChildren.apply($("f-postPresets"), PRESETS.map(function (p) {
+  return el("button", { type: "button", text: p[0], on: { click: function () { setDays(p[1]); } } });
+}));
+$("f-dayPresets").replaceChildren.apply($("f-dayPresets"), [3, 5, 7, 10, 15].map(function (d) {
+  return el("button", { type: "button", text: d + " days", on: { click: function () { $("f-days").value = String(d); } } });
+}));
+$("f-hour").addEventListener("change", scheduleChanged);
 
 function showSummary() {
-  var on = $("f-schedule").value !== "off";
+  var on = postDays().length > 0;
   $("f-overdueWithinBox").style.display = $("f-includeOverdue").checked ? "flex" : "none";
-  ["f-days", "f-onlyProperties", "f-onlyDated", "f-includeOverdue", "f-overdueWithin", "f-owners", "f-quietDays", "f-properties", "f-intro", "f-summaryPreviewBtn"].forEach(function (id) { $(id).disabled = !on; });
+  ["f-hour", "f-days", "f-onlyProperties", "f-onlyDated", "f-includeOverdue", "f-overdueWithin", "f-owners", "f-quietDays", "f-properties", "f-intro", "f-summaryPreviewBtn"].forEach(function (id) { $(id).disabled = !on; });
   $("f-propertiesBox").style.display = $("f-onlyProperties").checked ? "block" : "none";
   // With an API key, pick from zInspector's list; without one, type the names.
   $("f-picker").style.display = state.summaryReadsZinspector ? "block" : "none";
@@ -470,7 +497,6 @@ function showSummary() {
       : "Choose properties to read the full list from zInspector. Without them, it lists only the tasks zInspector has sent this chat.")
     : "Lists the tasks zInspector has sent this chat so far. To list every open task, add a zInspector API key (see the guide).";
 }
-$("f-schedule").addEventListener("change", showSummary);
 $("f-onlyProperties").addEventListener("change", showSummary);
 $("f-includeOverdue").addEventListener("change", showSummary);
 
