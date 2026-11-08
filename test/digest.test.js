@@ -92,6 +92,28 @@ test("chats saved with the old assigned checkbox keep their choice", () => {
   assert.equal(summaryOf({}).owners, "assigned-or-next");
 });
 
+test("going quiet lists open tasks with no activity for the chosen days, due date or not, oldest first", () => {
+  const ago = (days) => new Date(MONDAY.getTime() - days * 864e5).toISOString();
+  const tasks = [
+    task({ id: "q1", description: "Keyrenter follow up", lastActivity: ago(122) }),
+    task({ id: "q2", description: "WaterGuru", lastActivity: ago(20), status: "In Progress" }),
+    task({ id: "q3", description: "Fresh", lastActivity: ago(3) }),
+    task({ id: "q4", description: "Due soon and quiet", due: "2026-10-27", lastActivity: ago(40) }),
+    task({ id: "q5", description: "Quiet but closed", status: "Closed", lastActivity: ago(90) }),
+  ];
+  const { text } = buildDigest(weekly, tasks, {}, MONDAY);
+  assert.match(text, /^_1 due in the next 7 days · 2 going quiet \(no activity for 14\+ days\)_$/m);
+  assert.match(
+    text,
+    /^\*Tim Wallace\* · 1 task · 2 going quiet\n🟠 \*Due soon and quiet\* — due tomorrow\n💤 \*Keyrenter follow up\* — no activity for 4 months\n💤 \*WaterGuru\* — no activity for 2 weeks · In Progress$/m,
+  );
+  const only30 = buildDigest({ ...weekly, summary: { schedule: "weekly", quietDays: 30 } }, tasks, {}, MONDAY).text;
+  assert.doesNotMatch(only30, /WaterGuru/);
+  assert.equal(buildDigest({ ...weekly, summary: { schedule: "weekly", quietDays: 0 } }, tasks.slice(0, 2), {}, MONDAY), null);
+  // Only quiet tasks still make a summary.
+  assert.match(buildDigest(weekly, tasks.slice(0, 1), {}, MONDAY).text, /💤 \*Keyrenter follow up\*/);
+});
+
 test("a property chosen by id matches tasks on it", () => {
   const tasks = [task({ due: "2026-10-27", propertyId: 42 }), task({ due: "2026-10-27", propertyId: 7 })];
   const summary = { ...SUMMARY_DEFAULTS, onlyProperties: true, properties: [{ label: "42", name: "", ids: [42] }] };

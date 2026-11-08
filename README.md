@@ -20,8 +20,9 @@ New, newly assigned and finished tasks arrive in Google Chat as a friendly sente
 🎉 Nour B wrapped up Marketing Inbox — 2 days early 🚀
 ```
 
-The clock row always shows the due date and priority ("No due date yet · Normal priority" when not set), in
-red for overdue and highest priority, orange for high, amber for due today or tomorrow, grey when not set; a
+The clock row always shows the due date and priority, in red for overdue and highest priority, orange for high,
+amber for due today or tomorrow, grey for normal; without a due date it says "⚠️ No due date: set one so it isn't
+missed" in amber; a
 finished task shows "✓ Done · 2 days early" in green. The person is @mentioned (which notifies them) on a new
 task or a task just given to them, when their Google Chat id is on file (People). Finished tasks name them without a ping. Slack gets the same message as text.
 Other alerts are short text messages:
@@ -66,6 +67,9 @@ It's a message rather than a card because chat cards can't @mention anyone. Each
   for every property that starts with it (`Marketing.BizDev*`).
 - **Only tasks with a due date**, and **Include overdue tasks**, overdue in the last 7, 30 (default) or 90 days or any
   time, so tasks forgotten long ago don't fill the list.
+- **Going quiet**: also list open tasks nobody has touched for 7, 14 (default), 30 or 60 days, due date or not, oldest
+  first ("💤 … — no activity for 4 months"). On tasks without due dates, silence is how a missed deadline shows.
+  From webhooks it counts from the task's last event the chat received; from zInspector, its last change.
 - **Whose tasks**: assigned only; assigned or the next to-do (default); or assigned, next to-do or the manager. Each
   task is listed under the first of these people it has, and says "you're next" or "you manage it" when that person
   isn't the assignee.

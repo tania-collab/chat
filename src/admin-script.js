@@ -260,6 +260,10 @@ function openForm(c) {
     return el("option", { value: k, text: state.owners[k] });
   }));
   $("f-owners").value = s.owners || "assigned-or-next";
+  $("f-quietDays").replaceChildren.apply($("f-quietDays"), state.quietDays.map(function (d) {
+    return el("option", { value: String(d), text: d ? "no activity for " + d + "+ days" : "off" });
+  }));
+  $("f-quietDays").value = String(s.quietDays == null ? 14 : s.quietDays);
   $("f-intro").value = s.intro || state.summaryIntro[s.schedule] || state.summaryIntro.daily;
   $("f-introDetails").replaceChildren.apply($("f-introDetails"), state.introDetails.map(function (d) {
     return el("button", { type: "button", text: d, on: { click: function () { insertInto($("f-intro"), "[" + d + "]"); } } });
@@ -429,7 +433,7 @@ function summaryForm() {
   var s = {
     schedule: $("f-schedule").value, days: Number($("f-days").value), onlyProperties: $("f-onlyProperties").checked,
     onlyDated: $("f-onlyDated").checked, includeOverdue: $("f-includeOverdue").checked,
-    overdueWithin: Number($("f-overdueWithin").value), owners: $("f-owners").value, intro: introValue()
+    overdueWithin: Number($("f-overdueWithin").value), owners: $("f-owners").value, quietDays: Number($("f-quietDays").value), intro: introValue()
   };
   if (state.summaryReadsZinspector) s.properties = chosen;
   else s.propertyLines = $("f-properties").value.split("\n");
@@ -455,7 +459,7 @@ $("f-schedule").addEventListener("change", function () {
 function showSummary() {
   var on = $("f-schedule").value !== "off";
   $("f-overdueWithinBox").style.display = $("f-includeOverdue").checked ? "flex" : "none";
-  ["f-days", "f-onlyProperties", "f-onlyDated", "f-includeOverdue", "f-overdueWithin", "f-owners", "f-properties", "f-intro", "f-summaryPreviewBtn"].forEach(function (id) { $(id).disabled = !on; });
+  ["f-days", "f-onlyProperties", "f-onlyDated", "f-includeOverdue", "f-overdueWithin", "f-owners", "f-quietDays", "f-properties", "f-intro", "f-summaryPreviewBtn"].forEach(function (id) { $(id).disabled = !on; });
   $("f-propertiesBox").style.display = $("f-onlyProperties").checked ? "block" : "none";
   // With an API key, pick from zInspector's list; without one, type the names.
   $("f-picker").style.display = state.summaryReadsZinspector ? "block" : "none";

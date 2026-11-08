@@ -32,8 +32,9 @@ export function cardAsText({ title, topLabel, detailsText, description, link }) 
 }
 
 // Colors carry meaning: red for overdue and highest priority, orange for high, amber for due today or
-// tomorrow, green for done, grey for "not set" and normal.
-const COLOR = { overdue: "#d93025", highest: "#d93025", high: "#e8710a", soon: "#e37400", done: "#188038", none: "#5f6368", normal: "#5f6368", low: "#5f6368" };
+// tomorrow, green for done, grey for normal. A missing due date is amber: tasks without one get missed.
+const COLOR = { overdue: "#d93025", highest: "#d93025", high: "#e8710a", soon: "#e37400", missing: "#e37400", done: "#188038", none: "#5f6368", normal: "#5f6368", low: "#5f6368" };
+const NO_DUE_DATE = "⚠️ No due date: set one so it isn't missed";
 
 // What a task card shows. Open tasks always show their due date and priority (saying when they're not set);
 // a finished task shows how it ended. The sentence above already says who and how early or late.
@@ -44,7 +45,7 @@ export function cardContent(extras, kind, status) {
     parts = [[`✓ ${extras.finishLabel || word}`.replace(/^✓ Work Complete/, "✓ Done"), "done"]];
   } else {
     parts = [
-      [(extras.dueLabel || "No due date yet").replace(/^⚠️ /, ""), extras.dueTone || "none"],
+      extras.dueLabel ? [extras.dueLabel.replace(/^⚠️ /, ""), extras.dueTone || "none"] : [NO_DUE_DATE, "missing"],
       [extras.priorityLabel || "Normal priority", extras.priorityTone || "normal"],
     ];
   }

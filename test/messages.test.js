@@ -38,13 +38,13 @@ test("a new task is a sentence about the person, then one compact block with the
 test("Slack gets the same message as text", () => {
   const payload = buildPayload(created, { ...gchat, platform: "slack" }, withLink);
   assert.equal(payload.cardsV2, undefined);
-  assert.equal(payload.text, "📌 *Tania Aquirre*, you've got a new task\n*<https://dashboard.zinspector.com/task/view/2160012|test task>*\nConferences · No due date yet · Normal priority");
+  assert.equal(payload.text, "📌 *Tania Aquirre*, you've got a new task\n*<https://dashboard.zinspector.com/task/view/2160012|test task>*\nConferences · ⚠️ No due date: set one so it isn't missed · Normal priority");
 });
 
 test("a new task with nobody on it (for chats that get all tasks) still reads well, and nudges for a due date", () => {
   const payload = buildPayload({ ...created, data: { ...created.data, assignedTo: null, manager: { name: "Laura E." } } }, { ...gchat, only: "all" });
   assert.equal(payload.text, "📌 New task from Laura");
-  assert.equal(detailsOf(payload), "No due date yet · Normal priority");
+  assert.equal(detailsOf(payload), "⚠️ No due date: set one so it isn't missed · Normal priority");
 });
 
 test("names a vendor when the task is assigned to a contact", () => {
@@ -178,12 +178,12 @@ test("says when a task is due in words, and flags overdue ones", () => {
   assert.equal(due(-1), "Overdue by 1 day");
   assert.equal(due(-3), "Overdue by 3 days");
   assert.match(due(10), /^Due [A-Z][a-z]{2} \d+/);
-  assert.equal(due(null), "No due date yet");
+  assert.equal(due(null), "⚠️ No due date: set one so it isn't missed");
   // Colors carry the urgency: red overdue and highest priority, amber soon, orange high, grey not set.
   const html = (n, p) => payloadDue(n, p).cardsV2[0].card.sections[0].widgets[1].decoratedText.text;
   assert.equal(html(-1, 5), '<font color="#d93025">Overdue by 1 day</font> · <font color="#d93025">Highest priority</font>');
   assert.equal(html(1, 4), '<font color="#e37400">Due tomorrow</font> · <font color="#e8710a">High priority</font>');
-  assert.equal(html(null, 3), '<font color="#5f6368">No due date yet</font> · <font color="#5f6368">Normal priority</font>');
+  assert.equal(html(null, 3), '<font color="#e37400">⚠️ No due date: set one so it isn\'t missed</font> · <font color="#5f6368">Normal priority</font>');
 });
 
 test("a finished task cheers when it's early or on time, and says when it's late", () => {
