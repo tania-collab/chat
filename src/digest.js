@@ -18,6 +18,8 @@ export const SCHEDULES = {
   weekly: "Weekly, Monday mornings (8:30am Pacific)",
 };
 export const SUMMARY_DAYS = [1, 3, 7, 14, 30];
+// How far back overdue tasks are listed (0 = all), so tasks forgotten long ago don't fill the list.
+export const OVERDUE_WITHIN = [7, 30, 90, 0];
 export const MAX_PROPERTIES = 20;
 export const SUMMARY_DEFAULTS = {
   schedule: "weekly",
@@ -26,6 +28,7 @@ export const SUMMARY_DEFAULTS = {
   properties: [], // [{label, name, ids}]: a name ("Marketing.Comms", or "Marketing.BizDev*" for all that start so) and/or ids
   onlyDated: true,
   includeOverdue: true,
+  overdueWithin: 30,
   onlyAssigned: true,
 };
 
@@ -71,7 +74,7 @@ export function selectTasks(tasks, summary, settings = {}, now = new Date()) {
     .map((t) => ({ ...t, ...dueInfo(t.due, today) }))
     .filter((t) => {
       if (!t.dueDate) return !summary.onlyDated;
-      if (t.overdue) return summary.includeOverdue;
+      if (t.overdue) return summary.includeOverdue && (!summary.overdueWithin || -t.daysLeft <= summary.overdueWithin);
       return t.daysLeft <= summary.days;
     });
 }

@@ -9,7 +9,7 @@
 
 import { DEFAULT_COMPLETED, buildMessage, buildPayload, cardFor, skipReason, SKIP_REASONS, AUDIENCES, ALERTS, alertsOf, eventKind, deliveryUrl, render, fieldPaths, templateFor, EVENTS, EXAMPLES, EXAMPLE_PREVIOUS, TEST_MESSAGE } from "./messages.js";
 import { snapshotOf, EXTRA_NAMES } from "./taskview.js";
-import { buildDigest, isSummaryTime, summaryOf, SCHEDULES, SUMMARY_DAYS } from "./digest.js";
+import { buildDigest, isSummaryTime, summaryOf, SCHEDULES, SUMMARY_DAYS, OVERDUE_WITHIN } from "./digest.js";
 import { zinspectorConfigured, readsZinspector, openTasksOn, resolveProperties, ZinspectorError } from "./summary.js";
 import {
   getConnections,
@@ -238,6 +238,7 @@ async function api(request, env, url, user) {
       skipReasons: SKIP_REASONS,
       schedules: SCHEDULES,
       summaryDays: SUMMARY_DAYS,
+      overdueWithin: OVERDUE_WITHIN,
       summaryReadsZinspector: zinspectorConfigured(env),
     });
   }

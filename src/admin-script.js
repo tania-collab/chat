@@ -247,6 +247,10 @@ function openForm(c) {
   $("f-properties").value = (s.properties || []).map(function (p) { return p.label; }).join("\n");
   $("f-onlyDated").checked = !!s.onlyDated;
   $("f-includeOverdue").checked = !!s.includeOverdue;
+  $("f-overdueWithin").replaceChildren.apply($("f-overdueWithin"), state.overdueWithin.map(function (d) {
+    return el("option", { value: String(d), text: d ? d + " days" : "any time (all)" });
+  }));
+  $("f-overdueWithin").value = String(s.overdueWithin == null ? 30 : s.overdueWithin);
   $("f-onlyAssigned").checked = !!s.onlyAssigned;
   showSummary();
   templates = {};
@@ -352,7 +356,8 @@ $("f-reset").addEventListener("click", function () {
 });
 function showSummary() {
   var on = $("f-schedule").value !== "off";
-  ["f-days", "f-onlyProperties", "f-onlyDated", "f-includeOverdue", "f-onlyAssigned", "f-properties"].forEach(function (id) { $(id).disabled = !on; });
+  $("f-overdueWithinBox").style.display = $("f-includeOverdue").checked ? "flex" : "none";
+  ["f-days", "f-onlyProperties", "f-onlyDated", "f-includeOverdue", "f-overdueWithin", "f-onlyAssigned", "f-properties"].forEach(function (id) { $(id).disabled = !on; });
   $("f-propertiesBox").style.display = $("f-onlyProperties").checked ? "block" : "none";
   $("f-summarySource").textContent = !on ? "" : state.summaryReadsZinspector
     ? ($("f-onlyProperties").checked
@@ -362,6 +367,7 @@ function showSummary() {
 }
 $("f-schedule").addEventListener("change", showSummary);
 $("f-onlyProperties").addEventListener("change", showSummary);
+$("f-includeOverdue").addEventListener("change", showSummary);
 
 $("form").addEventListener("submit", function (ev) {
   ev.preventDefault();
@@ -371,7 +377,8 @@ $("form").addEventListener("submit", function (ev) {
     summary: {
       schedule: $("f-schedule").value, days: Number($("f-days").value), onlyProperties: $("f-onlyProperties").checked,
       propertyLines: $("f-properties").value.split("\n"), onlyDated: $("f-onlyDated").checked,
-      includeOverdue: $("f-includeOverdue").checked, onlyAssigned: $("f-onlyAssigned").checked
+      includeOverdue: $("f-includeOverdue").checked, overdueWithin: Number($("f-overdueWithin").value),
+      onlyAssigned: $("f-onlyAssigned").checked
     },
     alerts: Object.fromEntries(Array.prototype.map.call($("f-alerts").querySelectorAll("input"), function (b) {
       return [b.getAttribute("data-alert"), b.checked];

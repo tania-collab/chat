@@ -53,6 +53,20 @@ test("lists open tasks due within the window plus overdue ones, filtered as the 
   assert.deepEqual(pick({ onlyProperties: true, properties: [{ label: "1", name: "", ids: [42] }] }), []);
 });
 
+test("overdue tasks are listed only as far back as the chat chose, so long-forgotten ones stay out", () => {
+  const tasks = [
+    task({ description: "last week", due: "2026-10-20" }),
+    task({ description: "two months ago", due: "2026-08-20" }),
+    task({ description: "last spring", due: "2026-03-04" }),
+  ];
+  const pick = (overdueWithin) => selectTasks(tasks, { ...SUMMARY_DEFAULTS, overdueWithin }, {}, MONDAY).map((t) => t.description);
+  assert.deepEqual(pick(7), ["last week"]);
+  assert.deepEqual(pick(30), ["last week"]);
+  assert.deepEqual(pick(90), ["last week", "two months ago"]);
+  assert.deepEqual(pick(0), ["last week", "two months ago", "last spring"]);
+  assert.equal(SUMMARY_DEFAULTS.overdueWithin, 30);
+});
+
 test("a property chosen by id matches tasks on it", () => {
   const tasks = [task({ due: "2026-10-27", propertyId: 42 }), task({ due: "2026-10-27", propertyId: 7 })];
   const summary = { ...SUMMARY_DEFAULTS, onlyProperties: true, properties: [{ label: "42", name: "", ids: [42] }] };
@@ -157,7 +171,7 @@ async function withZinspector(fn) {
       { id: 1814734, Description: "Unassigned conference", Status: "New", EndDate: "2026-10-28T19:00:00+00:00", AssignedToUser: null, AssignedToUserName: "", Property: 903925, PropertyName: "Marketing.Conferences" },
     ],
     2206214: [
-      { id: 2160227, Description: "Idea: a chat message when a task is assigned to you", Status: "In Progress", EndDate: "2026-10-22T19:00:00+00:00", AssignedToUser: 35634, AssignedToUserName: "Tim Wallace", Property: 2206214, PropertyName: "Marketing.BizDev.Strategic" },
+      { id: 2160227, Description: "Idea: a chat message when a task is assigned to you", Status: "In Progress", EndDate: new Date(Date.now() - 5 * 864e5).toISOString(), AssignedToUser: 35634, AssignedToUserName: "Tim Wallace", Property: 2206214, PropertyName: "Marketing.BizDev.Strategic" },
     ],
   };
   globalThis.fetch = async (url, init = {}) => {
@@ -203,7 +217,7 @@ test("with an API key, saving looks up the properties and the summary reads thei
     assert.equal(reads[0].headers.Origin, ORIGIN);
     const card = calls.chat.at(-1).body.cardsV2[0].card;
     assert.equal(card.sections[0].header, "Tim Wallace — 2 tasks (1 overdue)");
-    assert.match(card.sections[0].widgets[0].textParagraph.text, /Idea: a chat message.*overdue since Oct 22.*In Progress<br>.*Conference: PTN.* · due \w+ · Approval Requested$/);
+    assert.match(card.sections[0].widgets[0].textParagraph.text, /Idea: a chat message.* · overdue since \w+ · In Progress<br>.*Conference: PTN.* · due \w+ · Approval Requested$/);
   });
 });
 

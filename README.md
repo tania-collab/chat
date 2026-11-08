@@ -49,7 +49,8 @@ each task's due day and status. Each chat chooses:
 - **Tasks due within**: tomorrow, or the next 3, 7, 14 or 30 days.
 - **Only these properties**: one per line as zInspector names them (`Marketing.Conferences`); end with `*` for every
   property that starts with it (`Marketing.BizDev*`), or paste a property's link.
-- **Only tasks with a due date**, **Include overdue tasks**, **Only tasks with someone assigned**.
+- **Only tasks with a due date**, **Only tasks with someone assigned**, and **Include overdue tasks**, overdue in the
+  last 7, 30 (default) or 90 days or any time, so tasks forgotten long ago don't fill the list.
 
 Nothing is posted when nothing matches. People with overdue tasks are @mentioned when their chat id is on file.
 **Send the summary now** on a chat's card posts it right away. With a zInspector API key (below) and chosen
