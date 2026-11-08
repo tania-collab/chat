@@ -58,7 +58,7 @@ Happy Monday, zMarketing. Here's the week ahead. @Tim @Athina @Laura
 │ 🔖 Next: Get attendee list (5 of 6 done)                    │
 │ Coming up (next 10 days)                                    │
 │ 📄 BizDev / Strategic … 🕒 Due tomorrow at 7:00am · High priority
-│ …                                     [Open zInspector]     │
+│ …                                     [Open the task list]   │
 └────────────────────────────────────────────────────────────┘
 ```
 

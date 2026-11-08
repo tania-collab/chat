@@ -4,7 +4,9 @@
 import { DEFAULT_COMPLETED, mentionFor, taskUrl } from "./messages.js";
 import { TIME_ZONE, localDate } from "./time.js";
 import { shortArea, priorityOf } from "./taskview.js";
-const DASHBOARD = "https://dashboard.zinspector.com/";
+// zInspector's list of open tasks: where "See them" and "Open the task list" go. (Its filters aren't in the address,
+// so a link can't open just one property's tasks.)
+const DASHBOARD = "https://dashboard.zinspector.com/task-list?active=true&mytasks=false";
 // Past due and coming up are listed in full; the other sections show a few and count the rest.
 const SHORT_LIST = 5;
 // "No due date" lists only tasks this new: they're the ones to date now.
@@ -229,7 +231,7 @@ export function buildDigest(connection, tasks, settings = {}, now = new Date(), 
   }
 
   const sections = parts.map((p) => [p.heading, ...p.shown.map(line), p.more].filter(Boolean).join("\n")).concat(extras);
-  const footer = [...notes, `<${DASHBOARD}|Open zInspector →>`];
+  const footer = [...notes, `<${DASHBOARD}|Open the task list in zInspector →>`];
   const text = [intro, counts.length ? `_${counts.join(" · ")}_` : "", ...sections, footer.join("\n")]
     .filter(Boolean)
     .join("\n\n");
@@ -260,7 +262,7 @@ function digestCard({ title, counts, parts, extras, notes }, settings) {
   sections.push({
     widgets: [
       ...notes.map((n) => ({ textParagraph: { text: escapeHtml(n) } })),
-      { buttonList: { buttons: [{ text: "Open zInspector", onClick: { openLink: { url: DASHBOARD } } }] } },
+      { buttonList: { buttons: [{ text: "Open the task list", onClick: { openLink: { url: DASHBOARD } } }] } },
     ],
   });
   const header = counts.length ? { title, subtitle: counts.join(" · ") } : { title };
