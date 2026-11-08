@@ -21,8 +21,8 @@ New, newly assigned and finished tasks arrive in Google Chat as a friendly sente
 ```
 
 The clock row always shows the due date and priority, in red for overdue and highest priority, orange for high,
-amber for due today or tomorrow, grey for normal; without a due date it says "⚠️ No due date: set one so it isn't
-missed" in amber; a
+amber for due today or tomorrow, grey for normal; without a due date it asks "📅 No due date yet. When should this be done?" in
+amber; a
 finished task shows "✓ Done · 2 days early" in green. The person is @mentioned (which notifies them) on a new
 task or a task just given to them, when their Google Chat id is on file (People). Finished tasks name them without a ping. Slack gets the same message as text.
 Other alerts are short text messages:
@@ -43,22 +43,28 @@ Messages about one task share a Google Chat thread. To tell what changed, the ap
 the 300 most recently seen tasks per chat. Messages still on an earlier default switch to the current one;
 edited messages stay as written.
 
-**Summary** (per chat, in its Settings): a message listing the open tasks coming due, one section per person, each
-person @mentioned (when their chat id is on file under People), overdue first:
+**Summary** (per chat, in its Settings): a friendly message listing the open tasks by urgency, each task tagging
+the people on it (@mentioned when their chat id is on file under People), and ending with a question to reply to:
 
 ```
-☀️ Good morning, zMarketing! Here's what's coming up (Mon, Nov 9)
-4 due in the next 7 days · 2 overdue
+☕ Morning, zMarketing! Curious what today holds? Here's where things stand 👇
+2 coming up in the next 7 days · 1 past due · 1 gone quiet
 
-@Tim Wallace · 3 tasks, 1 overdue
-🔴 Idea: a chat message when a task is assigned… — 4 days overdue · In Progress · next: @Laura
-🟠 Booth logistics – PMSC 2027 — due tomorrow
-🔹 Sponsor sessions follow-up — due Thu
+🔴 Past due. What's one small step that would move each of these forward?
+🔴 PTN 2026 RPM Franchise Conference — 11 days past due · @Laura, your move · Approval Requested
 
-Open zInspector
+🗓️ Coming up. Here's what's next on the calendar:
+🟠 Booth logistics – PMSC 2027 — due tomorrow · @Tim
+🔹 Sponsor sessions follow-up — due Thu · @Tim, with @Athina up next
+
+💤 Gone quiet. Still on your radar?
+💤 Follow up on Keyrenter offices ready to sign up! — untouched for 4 months · @Tim · In Progress
+
+🎉 Already wrapped something up? Share it here. Wins are contagious.
+Open zInspector →
 ```
 
-It's a message rather than a card because chat cards can't @mention anyone. Each chat chooses:
+The suggested opening and closing lines change from day to day so it never reads the same. It's a message rather than a card because chat cards can't @mention anyone. Each chat chooses:
 
 - **Post it**: off, daily (weekday mornings) or weekly (Monday mornings), at 8:30am Pacific.
 - **Tasks due within**: tomorrow, or the next 3, 7, 14 or 30 days.
@@ -71,8 +77,8 @@ It's a message rather than a card because chat cards can't @mention anyone. Each
   first ("💤 … — no activity for 4 months"). On tasks without due dates, silence is how a missed deadline shows.
   From webhooks it counts from the task's last event the chat received; from zInspector, its last change.
 - **Whose tasks**: assigned only; assigned or the next to-do (default); or assigned, next to-do or the manager. Each
-  task is listed under the first of these people it has, and says "you're next" or "you manage it" when that person
-  isn't the assignee.
+  task tags its assignee (and the next to-do person, "with @Laura up next"); without an assignee it tags the next
+  to-do ("your move") or the manager ("you're steering this one").
 
 - **Opening line**: editable, with [Chat name], [Day], [Week], [Days], [Due count] and [Overdue count].
 

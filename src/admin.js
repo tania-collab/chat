@@ -135,7 +135,7 @@ export const ADMIN_HTML = String.raw`<!doctype html>
     <label>What to post</label>
     <div class="checks" id="f-alerts"></div>
     <h2 style="margin:24px 0 4px">Summary</h2>
-    <div class="hint">A list of the open tasks coming due, per person, overdue first. Nothing is posted when there's nothing to list.</div>
+    <div class="hint">A friendly list of open tasks by urgency (past due, coming up, no date, gone quiet), each tagging the people on it. Nothing is posted when there's nothing to list.</div>
     <div class="split" style="margin-top:4px">
       <div>
         <label for="f-schedule">Post it</label>
@@ -178,7 +178,7 @@ export const ADMIN_HTML = String.raw`<!doctype html>
     <div class="row" style="margin-top:8px">
       <label for="f-owners" style="margin:0">Whose tasks</label>
       <select id="f-owners" style="width:auto"></select>
-      <span class="hint">each task is listed under the first of these people it has</span>
+      <span class="hint">each task tags its assignee, else its next to-do, else its manager</span>
     </div>
     <div class="row" style="margin-top:8px">
       <label for="f-quietDays" style="margin:0">Going quiet</label>
@@ -186,7 +186,7 @@ export const ADMIN_HTML = String.raw`<!doctype html>
       <span class="hint">also list open tasks nobody has touched for this long, due date or not</span>
     </div>
     <div class="hint" id="f-summarySource"></div>
-    <label for="f-intro">Opening line <span class="hint">click a detail to add it; the people and their tasks follow, each person @mentioned</span></label>
+    <label for="f-intro">Opening line <span class="hint">left as a suggested one, it changes each day so it never reads the same; click a detail to add it</span></label>
     <input type="text" id="f-intro">
     <div class="details" id="f-introDetails"></div>
     <div class="row" style="margin-top:8px" id="f-summaryPreviewRow">
