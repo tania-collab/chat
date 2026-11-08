@@ -152,6 +152,42 @@ test("a due time shows for today and tomorrow, in Pacific time, and sets the day
   assert.match(text, /\*Evening\* — due today at 5:00pm/);
 });
 
+test("past due and coming up list everything; no-date and quiet show 5 and count the rest", () => {
+  const ago = (days) => new Date(MONDAY.getTime() - days * 864e5).toISOString();
+  const tasks = [
+    ...Array.from({ length: 7 }, (_, i) => task({ id: `o${i}`, description: `Late ${i}`, due: "2026-10-20" })),
+    ...Array.from({ length: 7 }, (_, i) => task({ id: `c${i}`, description: `Soon ${i}`, due: "2026-10-28" })),
+    ...Array.from({ length: 7 }, (_, i) => task({ id: `q${i}`, description: `Quiet ${i}`, due: "2026-11-30", lastActivity: ago(15 + i) })),
+  ];
+  const { text } = buildDigest({ ...weekly, summary: { schedule: "weekly" } }, tasks, { taskUrl: "https://z/{id}" }, MONDAY);
+  assert.equal((text.match(/Late \d/g) || []).length, 7);
+  assert.equal((text.match(/Soon \d/g) || []).length, 7);
+  assert.equal((text.match(/Quiet \d/g) || []).length, 5);
+  assert.match(text, /^Plus 2 more quiet tasks\. <https:\/\/dashboard\.zinspector\.com\/\|See them in zInspector>$/m);
+});
+
+test("no due date lists only tasks from the last 7 days, and counts the older ones", () => {
+  const ago = (days) => new Date(MONDAY.getTime() - days * 864e5).toISOString();
+  const tasks = [
+    task({ id: "n1", description: "Brand new", createdAt: ago(2) }),
+    task({ id: "n2", description: "Old one", createdAt: ago(40) }),
+    task({ id: "n3", description: "Unknown age" }),
+  ];
+  const { text } = buildDigest({ ...weekly, summary: { schedule: "weekly", onlyDated: false } }, tasks, {}, MONDAY);
+  assert.match(text, /^\*No due date\* \(new in the last 7 days\)\n▫️ \*Brand new\* — \*Tim Wallace\*$/m);
+  assert.match(text, /^Plus 2 older tasks with no due date\. </m);
+  assert.doesNotMatch(text, /Old one|Unknown age/);
+});
+
+test("the same task filed twice shows once, saying how many", () => {
+  const ago = (days) => new Date(MONDAY.getTime() - days * 864e5).toISOString();
+  const album = { description: "Your album from Storibox at SlotZilla Las Vegas", propertyName: "Marketing.Conferences", lastActivity: ago(16) };
+  const tasks = [task({ id: "a1", ...album }), task({ id: "a2", ...album, assignee: laura }), task({ id: "b", description: "Other", lastActivity: ago(16) })];
+  const { text } = buildDigest(weekly, tasks, {}, MONDAY);
+  assert.equal((text.match(/Storibox/g) || []).length, 1);
+  assert.match(text, /\*Your album from Storibox at SlotZilla Las Vegas\* \(2 tasks\) — quiet 2 weeks/);
+});
+
 test("a task's pending to-do shows under it", () => {
   const t = task({ due: "2026-10-27", todo: { next: "Get attendee list", done: 5, total: 6 } });
   assert.match(buildDigest(weekly, [t], {}, MONDAY).text, /— due tomorrow · \*Tim Wallace\*\n      ➡️ Next: Get attendee list _\(5 of 6 done\)_$/m);
@@ -248,7 +284,7 @@ test("without an API key, Send the summary now lists the tasks the app has seen"
     assert.equal(res.ok, true);
     const { text } = calls.at(-1).body;
     assert.match(text, /^_1 without a date_$/m);
-    assert.match(text, /^\*No due date\*\n▫️ .*Second task.* — \*Tania Aquirre\*$/m);
+    assert.match(text, /^\*No due date\* \(new in the last 7 days\)\n▫️ .*Second task.* — \*Tania Aquirre\*$/m);
     assert.match(text, /Last week the team opened 2 and wrapped up 1 🎉\nNothing past due 👍\n/);
   });
 });
