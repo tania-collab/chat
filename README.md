@@ -43,12 +43,14 @@ Messages about one task share a Google Chat thread. To tell what changed, the ap
 the 300 most recently seen tasks per chat. Messages still on an earlier default switch to the current one;
 edited messages stay as written.
 
-**Summary** (per chat, in its Settings): the greeting and who's needed for what (each person @mentioned when their
+**Summary** (per chat, in its Settings): the greeting and one line per past-due or coming-up task tagging whoever has the next step and saying what it is (@mentioned when their
 chat id is on file under People), then a card per section, each task in two lines:
 
 ```
 Happy Monday, zMarketing. Here's the week ahead.
-Who's needed: @Athina: 1 past due, 1 coming up · @Tim: 1 past due · Laura E.: 2 past due
+🔴 @Laura E. → Get attendee list · PTN 2026 RPM Franchise Conference (12 days overdue)
+🔴 @Tim Wallace → Close it or set a new date · NAA 2027 Call for Presentations (9 days overdue)
+🗓️ @Athina Gkouziadi → Add name and dates to title · NARPM Broker Owner floorplan (due Thu)
 
 ┌ 🔴 Past due · 3 ─ Already done? Close it in zInspector so it drops off. ┐
 │ PTN – 2026 RPM Franchise Conference, October 25 - 27, Dallas TX  [Open] │

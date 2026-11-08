@@ -231,10 +231,10 @@ export function buildDigest(connection, tasks, settings = {}, now = new Date(), 
 
   // Google Chat: the greeting and who's needed for what (cards can't @mention), then a card per section.
   if (connection.platform === "google-chat" && format !== "text") {
-    const needed = whoIsNeeded(parts, tag);
+    const needed = actionLines(parts, tag, settings);
     const areas = new Set(parts.flatMap((p) => p.shown).map((t) => t.propertyName || ""));
     return {
-      text: [intro, needed && `*Who's needed:* ${needed}`].filter(Boolean).join("\n"),
+      text: [intro, needed].filter(Boolean).join("\n"),
       cardsV2: digestCards({ parts, extras, notes, summary, showArea: areas.size > 1 }, settings),
     };
   }
@@ -253,26 +253,23 @@ function peopleToTag(t) {
   return [t.owner?.person, next].filter((p, i, all) => p?.name && all.findIndex((q) => q?.name === p.name) === i);
 }
 
-const KIND_WORDS = { overdue: "past due", coming: "coming up", undated: "with no due date", quiet: "quiet" };
-
-// "@Tim: 1 past due · @Athina: 1 past due, 1 coming up": why each person is tagged, most to do first. Only the
-// tasks shown count (past due and coming up in full).
-function whoIsNeeded(parts, tag) {
-  const byPerson = new Map();
-  for (const part of parts) {
-    for (const t of part.shown) {
-      for (const p of peopleToTag(t)) {
-        const entry = byPerson.get(p.name) || { person: p, counts: {}, total: 0 };
-        entry.counts[part.kind] = (entry.counts[part.kind] || 0) + 1;
-        entry.total += 1;
-        byPerson.set(p.name, entry);
-      }
-    }
-  }
-  return [...byPerson.values()]
-    .sort((a, b) => (b.counts.overdue || 0) - (a.counts.overdue || 0) || b.total - a.total)
-    .map((e) => `${tag(e.person)}: ${Object.keys(KIND_WORDS).filter((k) => e.counts[k]).map((k) => `${e.counts[k]} ${KIND_WORDS[k]}`).join(", ")}`)
-    .join(" · ");
+// One line per past-due or coming-up task, tagging whoever has the next step and saying what it is:
+// "🔴 @Laura E. → *Get attendee list* · PTN 2026 RPM Franchise Conference (12 days overdue)". The step is the
+// task's next to-do; without one, close or re-date it (past due) or check it's on track (coming up).
+function actionLines(parts, tag, settings) {
+  return parts
+    .filter((p) => p.kind === "overdue" || p.kind === "coming")
+    .flatMap((p) =>
+      p.shown.map((t) => {
+        const next = realPerson(t.nextPerson || (t.next ? { name: t.next } : null));
+        const who = next || t.owner?.person;
+        const action = t.todo?.next || (t.overdue ? "Close it or set a new date" : `On track for ${t.note.replace(/^due /, "")}?`);
+        const title = titleOf(t, 60).replace(/\s*\|\s*/g, " – ").replace(/[<>|*]/g, " ").replace(/\s+/g, " ").trim();
+        const link = taskUrl(t.id, settings.taskUrl);
+        return `${t.overdue ? "🔴" : "🗓️"} ${who ? `${tag(who)} → ` : ""}*${action.replace(/[*<>|]/g, " ").trim()}* · ${link ? `<${link}|${title}>` : title} (${t.note})`;
+      }),
+    )
+    .join("\n");
 }
 
 const COLOR = { overdue: "#d93025", highest: "#d93025", high: "#e8710a", soon: "#e37400", later: "#5f6368", quiet: "#5f6368", none: "#5f6368" };
