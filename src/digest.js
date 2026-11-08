@@ -7,6 +7,8 @@ import { shortArea, priorityOf } from "./taskview.js";
 // zInspector's list of open tasks: where "See them" and "Open the task list" go. (Its filters aren't in the address,
 // so a link can't open just one property's tasks.)
 const DASHBOARD = "https://dashboard.zinspector.com/task-list?active=true&mytasks=false";
+// A property's page, which lists its tasks.
+const PROPERTY_PAGE = "https://dashboard.zinspector.com/property/view/";
 // Past due and coming up are listed in full; the other sections show a few and count the rest.
 const SHORT_LIST = 5;
 // "No due date" lists only tasks this new: they're the ones to date now.
@@ -188,7 +190,11 @@ export function buildDigest(connection, tasks, settings = {}, now = new Date(), 
   const isNew = (t) => t.createdAt && now.getTime() - Date.parse(t.createdAt) <= NEW_TASK_DAYS * DAY_MS;
   const noDate = due.filter((t) => !t.dueDate);
   const olderUndated = noDate.filter((t) => !isNew(t)).length;
-  const more = (n, what) => `Plus ${n} ${what}. <${DASHBOARD}|See them in zInspector>`;
+  // "Plus 28 more quiet tasks: BizDev / Company (20), BizDev / Strategic (8)", each opening that property's tasks.
+  const more = (n, what, hiddenTasks) => {
+    const where = whereLinks(hiddenTasks);
+    return `Plus ${n} ${what}${where ? `: ${where}` : `. <${DASHBOARD}|See them in zInspector>`}`;
+  };
   // [heading, tasks, how many to show (all when null), the line for the rest]
   const groups = [
     [SECTIONS.overdue, due.filter((t) => t.overdue).sort(byDue), null],
@@ -202,16 +208,17 @@ export function buildDigest(connection, tasks, settings = {}, now = new Date(), 
     .filter(([, list]) => list.length)
     .map(([heading, list, max, rest]) => {
       const shown = max == null ? list : list.slice(0, max);
-      const hidden = list.slice(shown.length).reduce((n, t) => n + (t.copies || 1), 0);
-      return { heading: heading(summary), shown, more: hidden ? more(hidden, rest(hidden)) : "" };
+      const rest_ = list.slice(shown.length);
+      const hidden = rest_.reduce((n, t) => n + (t.copies || 1), 0);
+      return { heading: heading(summary), shown, more: hidden ? more(hidden, rest(hidden), rest_) : "" };
     });
   const extras = [];
   if (olderUndated && summary.onlyDated === false) {
-    extras.push(more(olderUndated, `older ${olderUndated === 1 ? "task" : "tasks"} with no due date`));
+    extras.push(more(olderUndated, `older ${olderUndated === 1 ? "task" : "tasks"} with no due date`, noDate.filter((t) => !isNew(t))));
   }
   if (longQuiet) {
     extras.push(
-      `Plus ${longQuiet === 1 ? "1 older task" : `${longQuiet} older tasks`} with no activity for over ${cutoffLabel(summary.quietUpTo)}. Worth a clean-up? <${DASHBOARD}|Review in zInspector>`,
+      `Plus ${longQuiet === 1 ? "1 older task" : `${longQuiet} older tasks`} with no activity for over ${cutoffLabel(summary.quietUpTo)}. Worth a clean-up? ${whereLinks(allQuiet.filter((t) => t.longQuiet)) || `<${DASHBOARD}|Review in zInspector>`}`,
     );
   }
   const notes = [
@@ -385,6 +392,23 @@ function realPerson(p) {
 // "🔴 <link|Title> — 3 days past due · @Tim, with @Laura up next · In Progress": a dot for how soon, the title
 // linked, when, the people on the task (assignee, next to-do, or the manager when it's theirs), and the status
 // once past New.
+// Where some tasks are, as links to their properties' pages (which list each property's tasks):
+// "BizDev / Company (20), BizDev / Strategic (8)"; "" when none has a known property (the caller links the task list).
+function whereLinks(tasks) {
+  const byProperty = new Map();
+  for (const t of tasks) {
+    const key = t.propertyId ?? "";
+    const p = byProperty.get(key) || { id: t.propertyId, name: shortArea(t.propertyName) || t.propertyName || "", count: 0 };
+    p.count += t.copies || 1;
+    byProperty.set(key, p);
+  }
+  const known = [...byProperty.values()].filter((p) => p.id != null).sort((a, b) => b.count - a.count);
+  if (!known.length) return "";
+  const links = known.map((p) => `<${PROPERTY_PAGE}${encodeURIComponent(p.id)}|${(p.name || "Property").replace(/[<>|]/g, " ")} (${p.count})>`);
+  const unknown = byProperty.get("")?.count;
+  return `${links.join(", ")}${unknown ? `, and <${DASHBOARD}|${unknown} more>` : ""}`;
+}
+
 // The same task filed twice (an email that arrived twice, say) shows once: "Title (2 tasks)".
 function mergeSame(tasks) {
   const byTitle = new Map();
