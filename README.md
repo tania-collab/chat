@@ -91,6 +91,9 @@ It's a message rather than a card because chat cards can't @mention anyone. Each
 
 With the API key, dated tasks also show their pending to-do ("➡️ Next: Get attendee list (5 of 6 done)"), read
 from `/api/task/todos/` for up to 10 tasks and counting only real steps (not Documents slots or notes); if zInspector doesn't share to-dos with the key, the line is left out.
+Past due and coming up list every task. "No due date" lists only tasks created in the last 7 days (the ones to date
+now) and "No activity" the 5 most recently quiet; the rest of each is one "Plus 28 more…" line with a link. The same
+task filed twice (an email that arrived twice) shows once, as "Title (2 tasks)".
 Tasks due today or tomorrow show the time ("due tomorrow at 7:00am", Pacific). zInspector's system accounts (Ticket
 Notify, Z Support) are never tagged.
 

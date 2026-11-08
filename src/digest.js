@@ -4,14 +4,16 @@
 import { DEFAULT_COMPLETED, mentionFor, taskUrl } from "./messages.js";
 import { TIME_ZONE, localDate } from "./time.js";
 const DASHBOARD = "https://dashboard.zinspector.com/";
-const TASKS_PER_SECTION = 10;
-const QUIET_SHOWN = 8;
+// Past due and coming up are listed in full; the other sections show a few and count the rest.
+const SHORT_LIST = 5;
+// "No due date" lists only tasks this new: they're the ones to date now.
+const NEW_TASK_DAYS = 7;
 // Plain headings: the tasks under them carry the message.
 const SECTIONS = {
   // Often the work is done and only the task is still open.
   overdue: () => "*Past due* · already done? Close it in zInspector so it drops off.",
   coming: (s) => `*Coming up* (next ${s.days === 1 ? "day" : `${s.days} days`})`,
-  undated: () => "*No due date*",
+  undated: () => `*No due date* (new in the last ${NEW_TASK_DAYS} days)`,
   quiet: (s) => `*No activity for ${s.quietDays}+ days*`,
 };
 const NOT_OPEN = ["canceled", "deferred"]; // finished in zInspector without being done
@@ -180,18 +182,29 @@ export function buildDigest(connection, tasks, settings = {}, now = new Date(), 
   // One list of tasks, by urgency; each task tags the people on it.
   const line = (t) => taskLine(t, taskUrl(t.id, settings.taskUrl), tag);
   const byDue = (x, y) => String(x.dueDate).localeCompare(String(y.dueDate));
+  const isNew = (t) => t.createdAt && now.getTime() - Date.parse(t.createdAt) <= NEW_TASK_DAYS * DAY_MS;
+  const noDate = due.filter((t) => !t.dueDate);
+  const olderUndated = noDate.filter((t) => !isNew(t)).length;
+  const more = (n, what) => `Plus ${n} ${what}. <${DASHBOARD}|See them in zInspector>`;
+  // [heading, tasks, how many to show (all when null), the line for the rest]
   const groups = [
-    [SECTIONS.overdue, due.filter((t) => t.overdue).sort(byDue), TASKS_PER_SECTION],
-    [SECTIONS.coming, due.filter((t) => t.dueDate && !t.overdue).sort(byDue), TASKS_PER_SECTION],
-    [SECTIONS.undated, due.filter((t) => !t.dueDate), TASKS_PER_SECTION],
+    [SECTIONS.overdue, due.filter((t) => t.overdue).sort(byDue), null],
+    [SECTIONS.coming, due.filter((t) => t.dueDate && !t.overdue).sort(byDue), null],
+    [SECTIONS.undated, noDate.filter(isNew), SHORT_LIST, (n) => `more new ${n === 1 ? "task" : "tasks"} with no due date`],
     // Most recently quiet first: those can still be saved.
-    [SECTIONS.quiet, quiet.sort((x, y) => x.quietDays - y.quietDays), QUIET_SHOWN],
+    [SECTIONS.quiet, quiet.sort((x, y) => x.quietDays - y.quietDays), SHORT_LIST, (n) => `more quiet ${n === 1 ? "task" : "tasks"}`],
   ];
   const sections = groups
+    .map(([heading, tasks, max, rest]) => [heading, mergeSame(tasks), max, rest])
     .filter(([, list]) => list.length)
-    .map(([heading, list, max]) =>
-      [heading(summary), ...list.slice(0, max).map(line), list.length > max ? `   _…and ${list.length - max} more_` : ""].filter(Boolean).join("\n"),
-    );
+    .map(([heading, list, max, rest]) => {
+      const shown = max == null ? list : list.slice(0, max);
+      const hidden = list.slice(shown.length).reduce((n, t) => n + (t.copies || 1), 0);
+      return [heading(summary), ...shown.map(line), hidden ? more(hidden, rest(hidden)) : ""].filter(Boolean).join("\n");
+    });
+  if (olderUndated && summary.onlyDated === false) {
+    sections.push(more(olderUndated, `older ${olderUndated === 1 ? "task" : "tasks"} with no due date`));
+  }
   if (longQuiet) {
     sections.push(
       `Plus ${longQuiet === 1 ? "1 older task" : `${longQuiet} older tasks`} with no activity for over ${cutoffLabel(summary.quietUpTo)}. Worth a clean-up? <${DASHBOARD}|Review in zInspector>`,
@@ -285,12 +298,25 @@ function realPerson(p) {
 // "🔴 <link|Title> — 3 days past due · @Tim, with @Laura up next · In Progress": a dot for how soon, the title
 // linked, when, the people on the task (assignee, next to-do, or the manager when it's theirs), and the status
 // once past New.
+// The same task filed twice (an email that arrived twice, say) shows once: "Title (2 tasks)".
+function mergeSame(tasks) {
+  const byTitle = new Map();
+  for (const t of tasks) {
+    const key = `${titleOf(t).toLowerCase()}|${t.propertyId ?? t.propertyName ?? ""}`;
+    const first = byTitle.get(key);
+    if (first) first.copies = (first.copies || 1) + 1;
+    else byTitle.set(key, { ...t });
+  }
+  return [...byTitle.values()];
+}
+
 function taskLine(t, link, tag) {
   const title = titleOf(t).replace(/\s*\|\s*/g, " – ").replace(/[<>]/g, " ").replace(/\s+/g, " ").trim();
   const dot = t.quiet ? "💤" : t.overdue ? "🔴" : t.daysLeft != null && t.daysLeft <= 1 ? "🟠" : t.dueDate ? "🔹" : "▫️";
   const when = t.quiet ? `quiet ${quietFor(t.quietDays)}` : t.note;
   const status = t.status && !/^new$/i.test(t.status) ? t.status : "";
-  const head = [`${dot} ${link ? `<${link}|${title}>` : `*${title}*`}`, [when, peopleOn(t, tag), status].filter(Boolean).join(" · ")]
+  const copies = t.copies > 1 ? ` (${t.copies} tasks)` : "";
+  const head = [`${dot} ${link ? `<${link}|${title}>` : `*${title}*`}${copies}`, [when, peopleOn(t, tag), status].filter(Boolean).join(" · ")]
     .filter(Boolean)
     .join(" — ");
   // The pending step, when zInspector shared the task's to-dos: more useful than the date alone.
