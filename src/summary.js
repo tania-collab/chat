@@ -70,6 +70,17 @@ export async function resolveProperties(env, origin, lines, known = []) {
   return { value: entries };
 }
 
+// Properties whose name contains `query`, for the settings' property picker: [{id, name}], at most 100.
+export async function searchProperties(env, origin, query) {
+  const want = String(query).trim().toLowerCase();
+  const found = await readAll(env, origin, "/propertiesCursor/", { search: want }, 1);
+  return found
+    .filter((p) => String(p.Name || "").toLowerCase().includes(want))
+    .map((p) => ({ id: p.id, name: String(p.Name) }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .slice(0, 100);
+}
+
 // A task from zInspector's API in the shape the app keeps from webhooks (see taskview.js snapshotOf).
 export function taskFromApi(t) {
   return {

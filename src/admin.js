@@ -40,7 +40,7 @@ export const ADMIN_HTML = String.raw`<!doctype html>
   button:disabled { opacity: .6; cursor: default; }
   label { display: block; font-weight: 500; margin: 12px 0 4px; }
   .hint { color: var(--muted); font-size: 13px; font-weight: 400; }
-  input[type=text], input[type=url], input[type=password], select {
+  input[type=text], input[type=url], input[type=password], input[type=search], select {
     width: 100%; font: inherit; color: var(--text); background: var(--bg);
     border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
   .checks label { display: inline-flex; gap: 6px; align-items: center; font-weight: 400; margin: 4px 16px 0 0; }
@@ -150,9 +150,21 @@ export const ADMIN_HTML = String.raw`<!doctype html>
       <label><input type="checkbox" id="f-onlyProperties"> Only these properties</label>
     </div>
     <div id="f-propertiesBox">
+      <div id="f-picker">
+        <div class="row">
+          <input type="search" id="f-propSearch" class="grow" placeholder="Search zInspector properties, e.g. Marketing" style="width:auto">
+          <button type="button" id="f-propFind">Search</button>
+        </div>
+        <div class="hint" id="f-propMsg"></div>
+        <div class="checks" id="f-propResults" style="max-height:220px; overflow:auto"></div>
+        <div class="hint" style="margin-top:8px">Chosen (click one to remove it):</div>
+        <div class="details" id="f-propChosen"></div>
+      </div>
+      <div id="f-typed">
       <textarea id="f-properties" spellcheck="false" style="min-height:70px" placeholder="Marketing.Conferences&#10;Marketing.BizDev*"></textarea>
       <div class="hint">One per line, as zInspector names them. End with * for every property that starts with it
         (Marketing.BizDev* = Strategic, Enterprise, Company…). A property's link from zInspector works too.</div>
+      </div>
     </div>
     <div class="checks" style="margin-top:8px">
       <label><input type="checkbox" id="f-onlyDated"> Only tasks with a due date</label>

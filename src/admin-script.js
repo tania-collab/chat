@@ -245,6 +245,11 @@ function openForm(c) {
   $("f-days").value = String(s.days);
   $("f-onlyProperties").checked = !!s.onlyProperties;
   $("f-properties").value = (s.properties || []).map(function (p) { return p.label; }).join("\n");
+  chosen = (s.properties || []).map(function (p) { return { label: p.label, name: p.name, ids: (p.ids || []).slice() }; });
+  $("f-propSearch").value = "";
+  $("f-propResults").replaceChildren();
+  $("f-propMsg").textContent = "";
+  renderChosen();
   $("f-onlyDated").checked = !!s.onlyDated;
   $("f-includeOverdue").checked = !!s.includeOverdue;
   $("f-overdueWithin").replaceChildren.apply($("f-overdueWithin"), state.overdueWithin.map(function (d) {
@@ -354,11 +359,59 @@ $("f-template").addEventListener("input", function () { templates[$("f-event").v
 $("f-reset").addEventListener("click", function () {
   var e = eventInfo(); templates[e.key] = e.template; showEvent();
 });
+// The properties picked for the summary: [{label, name, ids}], one per property.
+var chosen = [];
+var found = [];
+function isChosen(id) { return chosen.some(function (p) { return p.ids.indexOf(id) >= 0; }); }
+function toggleProperty(prop, on) {
+  chosen = chosen.filter(function (p) { return p.ids.indexOf(prop.id) < 0; });
+  if (on) chosen.push({ label: prop.name, name: prop.name, ids: [prop.id] });
+  renderChosen();
+}
+function renderChosen() {
+  $("f-propChosen").replaceChildren.apply($("f-propChosen"), chosen.length ? chosen.map(function (p) {
+    return el("button", { type: "button", text: p.label + " ×", on: { click: function () {
+      chosen = chosen.filter(function (x) { return x !== p; }); renderChosen(); renderFound();
+    } } });
+  }) : [el("span", { "class": "hint", text: "none yet" })]);
+}
+function renderFound() {
+  var boxes = found.map(function (prop) {
+    var box = el("input", { type: "checkbox" });
+    box.checked = isChosen(prop.id);
+    box.addEventListener("change", function () { toggleProperty(prop, box.checked); });
+    return el("label", { style: "display:flex" }, [box, document.createTextNode(" " + prop.name)]);
+  });
+  if (found.length > 1) {
+    boxes.unshift(el("button", { type: "button", text: "Choose all " + found.length, style: "margin:4px 0", on: { click: function () {
+      found.forEach(function (prop) { if (!isChosen(prop.id)) chosen.push({ label: prop.name, name: prop.name, ids: [prop.id] }); });
+      renderChosen(); renderFound();
+    } } }));
+  }
+  $("f-propResults").replaceChildren.apply($("f-propResults"), boxes);
+}
+function findProperties() {
+  var q = $("f-propSearch").value.trim();
+  if (q.length < 2) { $("f-propMsg").textContent = "Type at least 2 letters."; return; }
+  $("f-propMsg").textContent = "Searching…";
+  call("GET", "/api/properties?q=" + encodeURIComponent(q)).then(function (list) {
+    found = list;
+    $("f-propMsg").textContent = list.length ? list.length + (list.length === 100 ? "+ (showing the first 100; narrow the search)" : "") + " found. Tick the ones to include."
+      : "No property names contain \"" + q + "\".";
+    renderFound();
+  }).catch(function (err) { $("f-propMsg").textContent = err.message; });
+}
+$("f-propFind").addEventListener("click", findProperties);
+$("f-propSearch").addEventListener("keydown", function (ev) { if (ev.key === "Enter") { ev.preventDefault(); findProperties(); } });
+
 function showSummary() {
   var on = $("f-schedule").value !== "off";
   $("f-overdueWithinBox").style.display = $("f-includeOverdue").checked ? "flex" : "none";
   ["f-days", "f-onlyProperties", "f-onlyDated", "f-includeOverdue", "f-overdueWithin", "f-onlyAssigned", "f-properties"].forEach(function (id) { $(id).disabled = !on; });
   $("f-propertiesBox").style.display = $("f-onlyProperties").checked ? "block" : "none";
+  // With an API key, pick from zInspector's list; without one, type the names.
+  $("f-picker").style.display = state.summaryReadsZinspector ? "block" : "none";
+  $("f-typed").style.display = state.summaryReadsZinspector ? "none" : "block";
   $("f-summarySource").textContent = !on ? "" : state.summaryReadsZinspector
     ? ($("f-onlyProperties").checked
       ? "Read from zInspector when it's sent, so it lists every matching open task."
@@ -376,7 +429,7 @@ $("form").addEventListener("submit", function (ev) {
     only: $("f-only").value, templates: templates,
     summary: {
       schedule: $("f-schedule").value, days: Number($("f-days").value), onlyProperties: $("f-onlyProperties").checked,
-      propertyLines: $("f-properties").value.split("\n"), onlyDated: $("f-onlyDated").checked,
+      onlyDated: $("f-onlyDated").checked,
       includeOverdue: $("f-includeOverdue").checked, overdueWithin: Number($("f-overdueWithin").value),
       onlyAssigned: $("f-onlyAssigned").checked
     },
@@ -384,6 +437,8 @@ $("form").addEventListener("submit", function (ev) {
       return [b.getAttribute("data-alert"), b.checked];
     }))
   };
+  if (state.summaryReadsZinspector) body.summary.properties = chosen;
+  else body.summary.propertyLines = $("f-properties").value.split("\n");
   var req = editing ? call("PUT", "/api/connections/" + editing.id, body) : call("POST", "/api/connections", body);
   req.then(function () { $("dialog").close(); return load(); })
      .catch(function (err) { $("formMsg").textContent = err.message; });

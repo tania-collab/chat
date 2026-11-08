@@ -10,7 +10,7 @@
 import { DEFAULT_COMPLETED, buildMessage, buildPayload, cardFor, skipReason, SKIP_REASONS, AUDIENCES, ALERTS, alertsOf, eventKind, deliveryUrl, render, fieldPaths, templateFor, EVENTS, EXAMPLES, EXAMPLE_PREVIOUS, TEST_MESSAGE } from "./messages.js";
 import { snapshotOf, EXTRA_NAMES } from "./taskview.js";
 import { buildDigest, isSummaryTime, summaryOf, SCHEDULES, SUMMARY_DAYS, OVERDUE_WITHIN } from "./digest.js";
-import { zinspectorConfigured, readsZinspector, openTasksOn, resolveProperties, ZinspectorError } from "./summary.js";
+import { zinspectorConfigured, readsZinspector, openTasksOn, resolveProperties, searchProperties, ZinspectorError } from "./summary.js";
 import {
   getConnections,
   saveConnections,
@@ -259,6 +259,19 @@ async function api(request, env, url, user) {
       source: sample ? "real" : "example",
       at: sample?.at || null,
     });
+  }
+
+  // The summary's property picker: zInspector properties whose name contains ?q=.
+  if (parts[1] === "properties" && method === "GET") {
+    if (!zinspectorConfigured(env)) return json({ error: "Add a zInspector API key to search its properties." }, 400);
+    const query = (url.searchParams.get("q") || "").trim();
+    if (query.length < 2) return json({ error: "Type at least 2 letters." }, 400);
+    try {
+      return json(await searchProperties(env, url.origin, query));
+    } catch (err) {
+      if (err instanceof ZinspectorError) return json({ error: err.message }, 502);
+      throw err;
+    }
   }
 
   if (parts[1] === "settings" && method === "PUT") {

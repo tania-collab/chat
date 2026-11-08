@@ -47,8 +47,9 @@ each task's due day and status. Each chat chooses:
 
 - **Post it**: off, daily (weekday mornings) or weekly (Monday mornings), at 8:30am Pacific.
 - **Tasks due within**: tomorrow, or the next 3, 7, 14 or 30 days.
-- **Only these properties**: one per line as zInspector names them (`Marketing.Conferences`); end with `*` for every
-  property that starts with it (`Marketing.BizDev*`), or paste a property's link.
+- **Only these properties**: with a zInspector API key, search zInspector's properties by name and tick the ones to
+  include. Without a key, type them one per line as zInspector names them (`Marketing.Conferences`), ending with `*`
+  for every property that starts with it (`Marketing.BizDev*`).
 - **Only tasks with a due date**, **Only tasks with someone assigned**, and **Include overdue tasks**, overdue in the
   last 7, 30 (default) or 90 days or any time, so tasks forgotten long ago don't fill the list.
 
@@ -154,8 +155,8 @@ reads: open tasks on the chosen properties, and property names to find them.
    the key's whitelist has another address instead, also add a secret `ZINSPECTOR_ORIGIN` with it
    (like `https://zcrm.pages.dev`).
 2. Worker → **Settings** → **Variables and Secrets** → add `ZINSPECTOR_API_KEY`, type **Secret** → **Deploy**.
-3. Open the app once (so it knows its own address), then in a chat's **Settings** tick **Only these properties** and
-   list them. Saving looks the names up in zInspector and says if one isn't found or the key is refused.
+3. Open the app once (so it knows its own address), then in a chat's **Settings** tick **Only these properties**,
+   search (for example "Marketing") and tick the properties. If the key is refused, the search says so.
 
 ## Connect a chat
 
