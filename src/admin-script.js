@@ -268,6 +268,10 @@ function openForm(c) {
     return el("option", { value: String(d), text: d ? "no activity for " + d + "+ days" : "off" });
   }));
   $("f-quietDays").value = String(s.quietDays == null ? 14 : s.quietDays);
+  $("f-quietUpTo").replaceChildren.apply($("f-quietUpTo"), state.quietUpTo.map(function (d) {
+    return el("option", { value: String(d), text: d ? (d < 60 ? d + " days" : d / 30 + " months") : "any age" });
+  }));
+  $("f-quietUpTo").value = String(s.quietUpTo == null ? 90 : s.quietUpTo);
   $("f-intro").value = s.intro || defaultIntro();
   $("f-introDetails").replaceChildren.apply($("f-introDetails"), state.introDetails.map(function (d) {
     return el("button", { type: "button", text: d, on: { click: function () { insertInto($("f-intro"), "[" + d + "]"); } } });
@@ -437,7 +441,7 @@ function summaryForm() {
   var s = {
     postDays: postDays(), hour: Number($("f-hour").value), days: Number($("f-days").value), onlyProperties: $("f-onlyProperties").checked,
     onlyDated: $("f-onlyDated").checked, includeOverdue: $("f-includeOverdue").checked,
-    overdueWithin: Number($("f-overdueWithin").value), owners: $("f-owners").value, quietDays: Number($("f-quietDays").value), intro: introValue()
+    overdueWithin: Number($("f-overdueWithin").value), owners: $("f-owners").value, quietDays: Number($("f-quietDays").value), quietUpTo: Number($("f-quietUpTo").value), intro: introValue()
   };
   if (state.summaryReadsZinspector) s.properties = chosen;
   else s.propertyLines = $("f-properties").value.split("\n");
@@ -448,9 +452,9 @@ $("f-summaryPreviewBtn").addEventListener("click", function () {
   $("f-summaryPreviewMsg").textContent = "Building…";
   call("POST", "/api/connections/" + editing.id + "/digest", { preview: true, summary: summaryForm() }).then(function (r) {
     var box = $("f-summaryPreview");
-    if (r.empty) { $("f-summaryPreviewMsg").textContent = "Nothing to list with these settings, so nothing would be posted."; box.style.display = "none"; return; }
+    if (r.empty) { $("f-summaryPreviewMsg").textContent = "Nothing to list with these settings on " + r.at + ", so nothing would be posted."; box.style.display = "none"; return; }
     if (!r.ok) { $("f-summaryPreviewMsg").textContent = r.detail; box.style.display = "none"; return; }
-    $("f-summaryPreviewMsg").textContent = "Not posted. This is what the chat would get now.";
+    $("f-summaryPreviewMsg").textContent = "Not posted. This is what the chat would get on " + r.at + ".";
     box.innerHTML = formatChat(r.preview).replace(/@@([^@]+)@@/g, "<span class='mention'>@$1</span>");
     box.style.display = "block";
   }).catch(function (err) { $("f-summaryPreviewMsg").textContent = err.message; });
@@ -486,7 +490,7 @@ $("f-hour").addEventListener("change", scheduleChanged);
 function showSummary() {
   var on = postDays().length > 0;
   $("f-overdueWithinBox").style.display = $("f-includeOverdue").checked ? "flex" : "none";
-  ["f-hour", "f-days", "f-onlyProperties", "f-onlyDated", "f-includeOverdue", "f-overdueWithin", "f-owners", "f-quietDays", "f-properties", "f-intro", "f-summaryPreviewBtn"].forEach(function (id) { $(id).disabled = !on; });
+  ["f-hour", "f-days", "f-onlyProperties", "f-onlyDated", "f-includeOverdue", "f-overdueWithin", "f-owners", "f-quietDays", "f-quietUpTo", "f-properties", "f-intro", "f-summaryPreviewBtn"].forEach(function (id) { $(id).disabled = !on; });
   $("f-propertiesBox").style.display = $("f-onlyProperties").checked ? "block" : "none";
   // With an API key, pick from zInspector's list; without one, type the names.
   $("f-picker").style.display = state.summaryReadsZinspector ? "block" : "none";

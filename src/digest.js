@@ -26,6 +26,9 @@ export const MAX_DAYS_AHEAD = 60;
 export const OVERDUE_WITHIN = [7, 30, 90, 0];
 // "Going quiet": open tasks with no activity for this many days (0 = off), whatever their due date.
 export const QUIET_DAYS = [7, 14, 30, 60, 0];
+// Tasks quiet for longer than this (days, 0 = no limit) are counted in one line, not listed: a weekly nudge
+// helps with what just went quiet, not with what was dropped long ago.
+export const QUIET_UP_TO = [30, 90, 180, 0];
 export const MAX_PROPERTIES = 20;
 // Whose tasks the summary lists; each task goes under the first of these people it has.
 export const OWNERS = {
@@ -43,6 +46,7 @@ export const SUMMARY_DEFAULTS = {
   includeOverdue: true,
   overdueWithin: 30,
   quietDays: 14,
+  quietUpTo: 90,
   owners: "assigned-or-next",
   intro: "", // the opening line; empty = DEFAULT_INTRO for the schedule
 };
@@ -57,7 +61,9 @@ export function summaryOf(connection) {
     : fromSchedule || (connection.alerts?.digest === false ? [] : SUMMARY_DEFAULTS.postDays);
   // "Only tasks with someone assigned" was a checkbox before the owners choice.
   const owners = OWNERS[saved.owners] ? saved.owners : onlyAssigned === true ? "assigned" : onlyAssigned === false ? "anyone" : SUMMARY_DEFAULTS.owners;
-  return { ...SUMMARY_DEFAULTS, ...saved, postDays, owners };
+  // An opening line saved while it was a suggested one follows today's suggestions.
+  const intro = OLD_INTROS.includes(saved.intro) ? "" : saved.intro;
+  return { ...SUMMARY_DEFAULTS, ...saved, postDays, owners, intro: intro || "" };
 }
 
 // True when a chat's summary is due: one of its days, in its hour, Pacific time (the cron runs every hour at
@@ -123,7 +129,7 @@ export function selectQuiet(tasks, summary, settings = {}, now = new Date(), lis
     .filter((t) => !listed.has(t.id) && t.lastActivity)
     .map((t) => ({ ...t, quietDays: Math.floor((now.getTime() - Date.parse(t.lastActivity)) / DAY_MS) }))
     .filter((t) => t.quietDays >= summary.quietDays)
-    .map((t) => ({ ...t, quiet: true }));
+    .map((t) => ({ ...t, quiet: true, longQuiet: Boolean(summary.quietUpTo) && t.quietDays > summary.quietUpTo }));
 }
 
 // The summary as one chat message (text, so people can be @mentioned: chat cards can't), or null when there's
@@ -133,8 +139,10 @@ export function buildDigest(connection, tasks, settings = {}, now = new Date(), 
   const summary = summaryOf(connection);
   const today = localDate(now);
   const due = selectTasks(tasks, summary, settings, now);
-  const quiet = selectQuiet(tasks, summary, settings, now, new Set(due.map((t) => t.id)));
-  const open = [...due, ...quiet];
+  const allQuiet = selectQuiet(tasks, summary, settings, now, new Set(due.map((t) => t.id)));
+  const quiet = allQuiet.filter((t) => !t.longQuiet);
+  const longQuiet = allQuiet.length - quiet.length;
+  const open = [...due, ...allQuiet];
   const weekAgo = now.getTime() - 7 * DAY_MS;
   const created = pulse ? tasks.filter((t) => t.createdAt && Date.parse(t.createdAt) >= weekAgo).length : 0;
   const finished = pulse ? tasks.filter((t) => t.finishedAt && Date.parse(t.finishedAt) >= weekAgo).length : 0;
@@ -175,13 +183,19 @@ export function buildDigest(connection, tasks, settings = {}, now = new Date(), 
     [SECTIONS.overdue, due.filter((t) => t.overdue).sort(byDue), TASKS_PER_SECTION],
     [SECTIONS.coming, due.filter((t) => t.dueDate && !t.overdue).sort(byDue), TASKS_PER_SECTION],
     [SECTIONS.undated, due.filter((t) => !t.dueDate), TASKS_PER_SECTION],
-    [SECTIONS.quiet, quiet.sort((x, y) => y.quietDays - x.quietDays), QUIET_SHOWN],
+    // Most recently quiet first: those can still be saved.
+    [SECTIONS.quiet, quiet.sort((x, y) => x.quietDays - y.quietDays), QUIET_SHOWN],
   ];
   const sections = groups
     .filter(([, list]) => list.length)
     .map(([heading, list, max]) =>
       [heading, ...list.slice(0, max).map(line), list.length > max ? `   _…and ${list.length - max} more_` : ""].filter(Boolean).join("\n"),
     );
+  if (longQuiet) {
+    sections.push(
+      `📦 ${longQuiet === 1 ? "1 more has" : `${longQuiet} more have`} been untouched for ${quietFor(summary.quietUpTo)}+. Time for a clean-up? <${DASHBOARD}|Review them in zInspector>`,
+    );
+  }
   const footer = [
     pulse ? `Last week the team opened ${created} and wrapped up ${finished}${finished ? " 🎉" : ""}` : "",
     due.length && !overdue && summary.includeOverdue ? "Nothing past due. Love to see it 🙌" : "",
@@ -224,6 +238,30 @@ export const CLOSERS = {
   ],
 };
 
+// Suggested opening lines from earlier versions.
+const OLD_INTROS = [
+  "☀️ *Good morning, [Chat name]!* Here's what's coming up ([Day])",
+  "👋 *Happy Monday, [Chat name]!* Here's the week of [Week]",
+];
+
+// The next time a chat's summary goes out (the next :30 of its hour on one of its days), or null when off.
+export function nextSendTime(summary, now = new Date()) {
+  if (!summary.postDays.length) return null;
+  const start = new Date(now);
+  start.setUTCMinutes(30, 0, 0);
+  if (start < now) start.setUTCHours(start.getUTCHours() + 1);
+  for (let h = 0; h < 24 * 8; h++) {
+    const at = new Date(start.getTime() + h * 3600 * 1000);
+    if (isSummaryTime(summary, at)) return at;
+  }
+  return null;
+}
+
+// "Mon, Nov 9 at 8:30am".
+export function sendTimeLabel(at, summary) {
+  return `${longDay(localDate(at))} at ${hourLabel(summary.hour)}`;
+}
+
 // One of `list` per day (Pacific), in turn.
 function rotate(list, ymd) {
   return list[Math.round(Date.parse(ymd) / DAY_MS) % list.length];
@@ -240,11 +278,17 @@ function fill(template, values) {
 
 // Who a task is listed under, and why: {person, role}; null when nobody fits the chat's owners choice.
 export function ownerOf(t, owners) {
-  const next = t.nextPerson || (t.next ? { name: t.next } : null);
-  if (t.assignee) return { person: t.assignee, role: "assigned" };
-  if (owners !== "assigned" && next?.name) return { person: next, role: "next" };
-  if (owners === "anyone" && t.manager?.name) return { person: t.manager, role: "manager" };
+  const next = realPerson(t.nextPerson || (t.next ? { name: t.next } : null));
+  if (realPerson(t.assignee)) return { person: t.assignee, role: "assigned" };
+  if (owners !== "assigned" && next) return { person: next, role: "next" };
+  if (owners === "anyone" && realPerson(t.manager)) return { person: t.manager, role: "manager" };
   return null;
+}
+
+// zInspector's system accounts ("Ticket Notify", "Z Support") file emails as tasks; they aren't people to tag.
+const SYSTEM_ACCOUNT = /\b(notify|notifications?|support|no-?reply|system|bot)\b/i;
+function realPerson(p) {
+  return p?.name && !SYSTEM_ACCOUNT.test(p.name) ? p : null;
 }
 
 // "🔴 <link|Title> — 3 days past due · @Tim, with @Laura up next · In Progress": a dot for how soon, the title
@@ -255,16 +299,19 @@ function taskLine(t, link, tag) {
   const dot = t.quiet ? "💤" : t.overdue ? "🔴" : t.daysLeft != null && t.daysLeft <= 1 ? "🟠" : t.dueDate ? "🔹" : "▫️";
   const when = t.quiet ? `untouched for ${quietFor(t.quietDays)}` : t.note;
   const status = t.status && !/^new$/i.test(t.status) ? t.status : "";
-  return [`${dot} ${link ? `<${link}|${title}>` : `*${title}*`}`, [when, peopleOn(t, tag), status].filter(Boolean).join(" · ")]
+  const head = [`${dot} ${link ? `<${link}|${title}>` : `*${title}*`}`, [when, peopleOn(t, tag), status].filter(Boolean).join(" · ")]
     .filter(Boolean)
     .join(" — ");
+  // The pending step, when zInspector shared the task's to-dos: more useful than the date alone.
+  const todo = t.todo?.next ? `\n      ➡️ Next: ${t.todo.next.replace(/[<>|]/g, " ")} _(${t.todo.done} of ${t.todo.total} done)_` : "";
+  return head + todo;
 }
 
 // Who to tag on a task line, in words: "@Tim", "@Tim, with @Laura up next", "@Laura, your move",
 // "@Athina, you're steering this one".
 function peopleOn(t, tag) {
-  const next = t.nextPerson || (t.next ? { name: t.next } : null);
-  if (t.assignee) return next?.name && next.name !== t.assignee.name ? `${tag(t.assignee)}, with ${tag(next)} up next` : tag(t.assignee);
+  const next = realPerson(t.nextPerson || (t.next ? { name: t.next } : null));
+  if (t.owner?.role === "assigned") return next && next.name !== t.assignee.name ? `${tag(t.assignee)}, with ${tag(next)} up next` : tag(t.assignee);
   if (t.owner?.role === "next") return `${tag(t.owner.person)}, your move`;
   if (t.owner?.role === "manager") return `${tag(t.owner.person)}, you're steering this one`;
   return "";

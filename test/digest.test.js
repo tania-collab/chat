@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildDigest, isSummaryTime, describeSchedule, selectTasks, summaryOf, SUMMARY_DEFAULTS, DEFAULT_INTRO, CLOSERS } from "../src/digest.js";
+import { buildDigest, isSummaryTime, describeSchedule, nextSendTime, sendTimeLabel, selectTasks, summaryOf, SUMMARY_DEFAULTS, DEFAULT_INTRO, CLOSERS } from "../src/digest.js";
 import worker from "../src/worker.js";
 import { makeEnv, admin, hook, withChat, created, withStatus, GCHAT_URL, ORIGIN } from "./helpers.js";
 
@@ -100,7 +100,7 @@ test("chats saved with the old assigned checkbox keep their choice", () => {
   assert.equal(summaryOf({}).owners, "assigned-or-next");
 });
 
-test("going quiet lists open tasks with no activity for the chosen days, due date or not, oldest first", () => {
+test("going quiet lists recently quiet tasks first, and only counts the ones dropped long ago", () => {
   const ago = (days) => new Date(MONDAY.getTime() - days * 864e5).toISOString();
   const tasks = [
     task({ id: "q1", description: "Keyrenter follow up", lastActivity: ago(122) }),
@@ -108,19 +108,53 @@ test("going quiet lists open tasks with no activity for the chosen days, due dat
     task({ id: "q3", description: "Fresh", lastActivity: ago(3) }),
     task({ id: "q4", description: "Due soon and quiet", due: "2026-10-27", lastActivity: ago(40) }),
     task({ id: "q5", description: "Quiet but closed", status: "Closed", lastActivity: ago(90) }),
+    task({ id: "q6", description: "Slipping", lastActivity: ago(45) }),
+    task({ id: "q7", description: "Ancient", lastActivity: ago(640) }),
   ];
   const { text } = buildDigest(weekly, tasks, {}, MONDAY);
   assert.match(text, /^_1 coming up in the next 7 days · 2 gone quiet_$/m);
   assert.match(
     text,
-    /^\*💤 Gone quiet\.\* Still on your radar\?\n💤 \*Keyrenter follow up\* — untouched for 4 months · \*Tim Wallace\*\n💤 \*WaterGuru\* — untouched for 2 weeks · \*Tim Wallace\* · In Progress$/m,
+    /^\*💤 Gone quiet\.\* Still on your radar\?\n💤 \*WaterGuru\* — untouched for 2 weeks · \*Tim Wallace\* · In Progress\n💤 \*Slipping\* — untouched for 6 weeks · \*Tim Wallace\*$/m,
   );
+  assert.match(text, /^📦 2 more have been untouched for 3 months\+\. Time for a clean-up\? <https:\/\/dashboard\.zinspector\.com\/\|Review them in zInspector>$/m);
   assert.match(text, /^🟠 \*Due soon and quiet\* — due tomorrow · \*Tim Wallace\*$/m);
-  const only30 = buildDigest({ ...weekly, summary: { schedule: "weekly", quietDays: 30 } }, tasks, {}, MONDAY).text;
-  assert.doesNotMatch(only30, /WaterGuru/);
+  assert.doesNotMatch(text, /Keyrenter|Ancient|Fresh/);
+  const noLimit = buildDigest({ ...weekly, summary: { schedule: "weekly", quietUpTo: 0 } }, tasks, {}, MONDAY).text;
+  assert.match(noLimit, /Keyrenter follow up\* — untouched for 4 months/);
+  assert.doesNotMatch(noLimit, /📦/);
   assert.equal(buildDigest({ ...weekly, summary: { schedule: "weekly", quietDays: 0 } }, tasks.slice(0, 2), {}, MONDAY), null);
-  // Only quiet tasks still make a summary.
-  assert.match(buildDigest(weekly, tasks.slice(0, 1), {}, MONDAY).text, /💤 \*Keyrenter follow up\*/);
+});
+
+test("system accounts aren't tagged: a task waiting on Ticket Notify goes to the next real person", () => {
+  const bot = { name: "Ticket Notify", email: "" };
+  const tasks = [
+    task({ id: "s1", description: "Assigned, bot next", due: "2026-10-27", nextPerson: bot }),
+    task({ id: "s2", description: "Bot next, managed", assignee: null, due: "2026-10-27", nextPerson: bot, manager: laura }),
+    task({ id: "s3", description: "Only bots", assignee: null, due: "2026-10-27", nextPerson: bot, manager: { name: "Z Support" } }),
+  ];
+  const { text } = buildDigest({ ...weekly, summary: { schedule: "weekly", owners: "anyone" } }, tasks, {}, MONDAY);
+  assert.match(text, /\*Assigned, bot next\* — due tomorrow · \*Tim Wallace\*$/m);
+  assert.match(text, /\*Bot next, managed\* — due tomorrow · \*Laura E\.\*, you're steering this one$/m);
+  assert.doesNotMatch(text, /Only bots|Ticket Notify|Z Support/);
+});
+
+test("a task's pending to-do shows under it", () => {
+  const t = task({ due: "2026-10-27", todo: { next: "Get attendee list", done: 5, total: 6 } });
+  assert.match(buildDigest(weekly, [t], {}, MONDAY).text, /— due tomorrow · \*Tim Wallace\*\n      ➡️ Next: Get attendee list _\(5 of 6 done\)_$/m);
+});
+
+test("an opening line saved while it was the suggested one follows today's suggestions", () => {
+  assert.equal(summaryOf({ summary: { intro: "👋 *Happy Monday, [Chat name]!* Here's the week of [Week]" } }).intro, "");
+  assert.equal(summaryOf({ summary: { intro: "Hi [Chat name]" } }).intro, "Hi [Chat name]");
+});
+
+test("the preview is dated the next time the summary goes out", () => {
+  const sunday = new Date("2026-11-08T20:00:00Z");
+  const at = nextSendTime({ postDays: ["Mon"], hour: 8 }, sunday);
+  assert.equal(at.toISOString(), "2026-11-09T16:30:00.000Z");
+  assert.equal(sendTimeLabel(at, { hour: 8 }), "Mon, Nov 9 at 8:30am");
+  assert.equal(nextSendTime({ postDays: [], hour: 8 }, sunday), null);
 });
 
 test("a property chosen by id matches tasks on it", () => {
@@ -256,6 +290,13 @@ async function withZinspector(fn) {
         const q = u.searchParams.get("search").toLowerCase();
         return Response.json({ results: properties.filter((p) => p.Name.toLowerCase().includes(q)), next: null });
       }
+      if (u.pathname === "/api/task/todos/") {
+        if (u.searchParams.get("Task") !== "1814733") return Response.json({ results: [], next: null });
+        return Response.json({ results: [
+          { id: 1, Task: 1814733, Description: "Send pre-conference email", Completed: true, Order: 0 },
+          { id: 2, Task: 1814733, Description: "Get attendee list", Completed: false, Order: 1 },
+        ], next: null });
+      }
       if (u.pathname === "/api/user/") return Response.json([{ id: 35634, FirstName: "Tim", LastName: "Wallace", email: "tim+onsight@zinspector.com" }]);
       if (u.pathname === "/api/tasks/") {
         assert.equal(u.searchParams.get("active"), "true");
@@ -292,7 +333,7 @@ test("with an API key, saving looks up the properties and the summary reads thei
     assert.equal(reads[0].headers.Origin, ORIGIN);
     const { text } = calls.chat.at(-1).body;
     assert.match(text, /^🔴 .*Idea: a chat message.* — 5 days past due · <users\/777> · In Progress$/m);
-    assert.match(text, /^🔹 .*Conference: PTN.* — due \w+ · <users\/777> · Approval Requested$/m);
+    assert.match(text, /^🔹 .*Conference: PTN.* — due \w+ · <users\/777> · Approval Requested\n      ➡️ Next: Get attendee list _\(1 of 2 done\)_$/m);
   });
 });
 
