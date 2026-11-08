@@ -44,7 +44,7 @@ test("lists open tasks due within the window plus overdue ones, filtered as the 
   assert.deepEqual(pick({}), ["overdue", "this week", "other property"]);
   assert.deepEqual(pick({ includeOverdue: false }), ["this week", "other property"]);
   assert.deepEqual(pick({ onlyDated: false }), ["overdue", "this week", "no date", "other property"]);
-  assert.deepEqual(pick({ onlyAssigned: false }), ["overdue", "this week", "nobody", "other property"]);
+  assert.deepEqual(pick({ owners: "assigned" }), ["overdue", "this week", "other property"]);
   assert.deepEqual(pick({ days: 30 }), ["overdue", "this week", "later", "other property"]);
   assert.deepEqual(
     pick({ onlyProperties: true, properties: [{ label: "x", name: "Marketing.Conferences", ids: [] }, { label: "y", name: "Marketing.BizDev*", ids: [] }] }),
@@ -65,6 +65,31 @@ test("overdue tasks are listed only as far back as the chat chose, so long-forgo
   assert.deepEqual(pick(90), ["last week", "two months ago"]);
   assert.deepEqual(pick(0), ["last week", "two months ago", "last spring"]);
   assert.equal(SUMMARY_DEFAULTS.overdueWithin, 30);
+});
+
+test("tasks nobody is assigned to go under the next to-do, or the manager, as the chat chose, saying why", () => {
+  const nobody = { assignee: null, due: "2026-10-27" };
+  const tasks = [
+    task({ ...nobody, description: "next", nextPerson: laura }),
+    task({ ...nobody, description: "managed", manager: { name: "Athina G.", email: "athina@zinspector.com" } }),
+    task({ description: "assigned", due: "2026-10-27", nextPerson: laura, manager: laura }),
+  ];
+  const pick = (owners) => selectTasks(tasks, { ...SUMMARY_DEFAULTS, owners }, {}, MONDAY).map((t) => `${t.description}:${t.owner.person.name}`);
+  assert.deepEqual(pick("assigned"), ["assigned:Tim Wallace"]);
+  assert.deepEqual(pick("assigned-or-next"), ["next:Laura E.", "assigned:Tim Wallace"]);
+  assert.deepEqual(pick("anyone"), ["next:Laura E.", "managed:Athina G.", "assigned:Tim Wallace"]);
+  assert.equal(SUMMARY_DEFAULTS.owners, "assigned-or-next");
+
+  const { text } = buildDigest({ ...weekly, summary: { schedule: "weekly", owners: "anyone" } }, tasks, {}, MONDAY);
+  assert.match(text, /^\*Laura E\.\* · 1 task\n🟠 \*next\* — due tomorrow · you're next$/m);
+  assert.match(text, /^\*Athina G\.\* · 1 task\n🟠 \*managed\* — due tomorrow · you manage it$/m);
+  assert.match(text, /🟠 \*assigned\* — due tomorrow · next: \*Laura E\.\*$/m);
+});
+
+test("chats saved with the old assigned checkbox keep their choice", () => {
+  assert.equal(summaryOf({ summary: { onlyAssigned: true } }).owners, "assigned");
+  assert.equal(summaryOf({ summary: { onlyAssigned: false } }).owners, "anyone");
+  assert.equal(summaryOf({}).owners, "assigned-or-next");
 });
 
 test("a property chosen by id matches tasks on it", () => {

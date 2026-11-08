@@ -94,6 +94,7 @@ export function taskFromApi(t, users = new Map()) {
     status: String(t.Status ?? ""),
     assignee: person(t.AssignedToUser, t.AssignedToUserName),
     nextPerson: person(t.NextToDo, t.NextToDoName),
+    manager: person(t.ManagedBy, t.ManagedByName),
     priority: t.Priority ?? null,
     // zInspector stores due times in UTC; the team's day is Pacific.
     due: t.EndDate ? (String(t.EndDate).length > 10 ? localDate(new Date(t.EndDate)) : t.EndDate) : null,
