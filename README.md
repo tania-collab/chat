@@ -122,7 +122,9 @@ Messages still on an earlier default switch to the current one; edited messages 
 
 - **Add a chat** (Google Chat or Slack) with a guided setup that ticks itself off: chat reached → link pasted in
   zInspector → zInspector's test arrived.
-- Each chat shows its **health** at a glance ("✓ Last message 2 hours ago · New task: …", or what failed).
+- Each chat shows its **health** at a glance ("✓ Last message 2 hours ago · New task: …", or what failed), where it
+  **posts to** (the Google Chat space, with **Open the space** and **Change**; the link itself stays hidden, since it
+  works like a password) and that it **gets alerts from** zInspector's webhook (**Show the link** when you need it).
 - **Settings** per chat: which tasks, what to post, and the **wording**, edited with detail buttons ([Person],
   [From], [Task title]…) and a live preview of the card.
 - **History** in plain words: what was posted, for which task and person, or why not.

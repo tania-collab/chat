@@ -128,10 +128,28 @@ function connectionCard(c) {
     }).catch(function (err) { flash(err.message, false); }).then(function () { b.disabled = false; });
   }
 
+  // Once connected, the card says where messages come from and go to; the zInspector link is one click away.
+  var hookBox = el("div", { "class": "row", style: "display:none; margin:6px 0 0 28px" }, [el("code", { "class": "url grow", text: link }), copyButton(link, flash)]);
   var body = h.zinspectorReached ? [
     healthLine(h),
-    el("label", { text: "Link for zInspector", style: "margin-top:12px" }),
-    el("div", { "class": "row" }, [el("code", { "class": "url grow", text: link }), copyButton(link, flash)])
+    el("div", { "class": "route" }, [
+      el("span", { "class": "route-icon", text: "📨" }),
+      el("span", { "class": "grow" }, [el("b", { text: "Posts to " }), document.createTextNode(chatPlace(c))]),
+      c.platform === "google-chat" && spaceId(c.chatUrl)
+        ? el("a", { "class": "btn", href: "https://chat.google.com/room/" + spaceId(c.chatUrl), target: "_blank", rel: "noopener", text: "Open the space" })
+        : null,
+      el("button", { text: "Change", on: { click: function () { openForm(c, "f-chatUrl"); } } })
+    ]),
+    el("div", { "class": "route" }, [
+      el("span", { "class": "route-icon", text: "🔗" }),
+      el("span", { "class": "grow" }, [el("b", { text: "Gets alerts from " }), document.createTextNode("zInspector's webhook ✓")]),
+      el("button", { text: "Show the link", on: { click: function (ev) {
+        var open = hookBox.style.display === "none";
+        hookBox.style.display = open ? "flex" : "none";
+        ev.target.textContent = open ? "Hide the link" : "Show the link";
+      } } })
+    ]),
+    hookBox
   ] : [setupSteps(c, h, link, flash, sendTest)];
 
   return el("div", { "class": "card" }, [
@@ -184,6 +202,17 @@ function healthLine(h) {
 }
 
 // Guided setup until zInspector's first event arrives; each step ticks itself off.
+// The chat's webhook link is a password (it has a key and token), so the card shows only which space it is.
+function spaceId(url) {
+  var m = String(url || "").match(/\/spaces\/([^/?]+)/);
+  return m ? m[1] : "";
+}
+function chatPlace(c) {
+  if (c.platform === "google-chat") return spaceId(c.chatUrl) ? "Google Chat (space " + spaceId(c.chatUrl) + ")" : "Google Chat";
+  var parts = String(c.chatUrl || "").split("/");
+  return "Slack channel (webhook " + (parts[parts.length - 2] || "") + ")";
+}
+
 function setupSteps(c, h, link, flash, sendTest) {
   function step(done, title, children) {
     return el("li", { "class": done ? "done" : "" }, [el("b", { text: (done ? "✓ " : "") + title })].concat(children || []));
@@ -219,7 +248,7 @@ function historyTable(log) {
   ]);
 }
 
-function openForm(c) {
+function openForm(c, focusId) {
   editing = c || null;
   $("formTitle").textContent = c ? "Settings for " + c.name : "Add a chat";
   $("f-name").value = c ? c.name : "";
@@ -290,6 +319,7 @@ function openForm(c) {
   setPlatform();
   showEvent();
   $("dialog").showModal();
+  if (focusId) { $(focusId).focus(); $(focusId).select(); }
 }
 
 var templates = {};
