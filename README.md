@@ -43,23 +43,23 @@ Messages about one task share a Google Chat thread. To tell what changed, the ap
 the 300 most recently seen tasks per chat. Messages still on an earlier default switch to the current one;
 edited messages stay as written.
 
-**Summary** (per chat, in its Settings): a few messages in a row. Each of past due and coming up is a card, then a
-short line under it @mentioning the people with the next step on those tasks (when their chat id is on file under
-People) and saying what to do; no due date, quiet and the closing line follow, untagged and collapsed:
+**Summary** (per chat, in its Settings): one message with the greeting and a card per section, then one reply in its
+thread @mentioning the people with the next step on past-due and coming-up tasks (when their chat id is on file
+under People) and saying what to do. Each person is @mentioned once; a later line names them without a second ping.
+No due date and quiet start collapsed and tag nobody.
 
 ```
 Happy Monday, zMarketing. Here's the week ahead.
 ┌ 🔴 Past due · 3 ─ Due date passed, task still open ────────────────────┐
 │ PTN – 2026 RPM Franchise Conference, October 25 - 27, Dallas TX  [Open] │
 │ 12 days overdue · Laura E. (next to-do) · Next: Get attendee list (5 of 6)
-└──────────────────────────────────────────────────────────────────────────┘
-👆 @Laura E. · @Tim Wallace: already done? Close it in zInspector so it drops off. Still on it? Set a new date.
 ┌ 🗓️ Coming up · 2 ─ Due in the next 10 days ─────────────────────────────┐
 │ Fwd: NARPM Broker Owner floorplan – meet 11-12 to pick booth     [Open] │
 │ due Thu · Highest priority · Athina G. (next to-do)                      │
-└──────────────────────────────────────────────────────────────────────────┘
-👆 @Athina Gkouziadi · @Laura E.: still on track? If plans changed, update the due date.
 ┌ 📅 No due date · 3 new ┐ ┌ 💤 Quiet · 5 ┐ (collapsed)   Plus 74 older… · [Open the task list]
+  ↳ 1 reply:
+    👆 🔴 Past due: @Laura E. · @Tim Wallace: already done? Close it in zInspector so it drops off. Still on it? Set a new date.
+    👆 🗓️ Coming up: @Athina Gkouziadi · Laura E.: still on track? If plans changed, update the due date.
 ```
 
 Priority shows only when it's high or highest; the area shows when the summary covers more than one. Slack gets the same summary as text. Each chat chooses:

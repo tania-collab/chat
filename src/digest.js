@@ -229,24 +229,24 @@ export function buildDigest(connection, tasks, settings = {}, now = new Date(), 
     rotate(weekly ? CLOSERS.weekly : CLOSERS.daily, today),
   ].filter(Boolean);
 
-  // Google Chat: several messages in a row. A card can't @mention and a message's text comes before its card, so
-  // past due and coming up each get their card, then a short message tagging the people on those tasks with what
-  // to do. No due date, quiet and the closing card follow together, untagged.
+  // Google Chat: the greeting with a card per section, then one reply in its thread tagging the people with the
+  // next step on past-due and coming-up tasks (cards can't @mention), a line per section saying what to do. Each
+  // person is @mentioned once, on their first line; later lines name them without a second ping.
   if (connection.platform === "google-chat" && format !== "text") {
     const areas = new Set(parts.flatMap((p) => p.shown).map((t) => t.propertyName || ""));
-    const cards = digestCards({ parts, extras, notes, summary, showArea: areas.size > 1 }, settings);
-    const messages = [];
-    const rest = [];
-    cards.forEach((card, i) => {
-      const part = parts[i];
-      if (!part || !TAG_HINT[part.kind]) return rest.push(card);
-      messages.push({ cardsV2: [card] });
-      const people = [...new Map(part.shown.map((t) => nextStepPerson(t)).filter(Boolean).map((p) => [p.name, p])).values()];
-      if (people.length) messages.push({ text: `👆 ${people.map(tag).join(" · ")}: ${TAG_HINT[part.kind]}` });
-    });
-    if (rest.length) messages.push({ cardsV2: rest });
-    messages[0] = { text: intro, ...messages[0] };
-    return { messages };
+    const messages = [{ text: intro, cardsV2: digestCards({ parts, extras, notes, summary, showArea: areas.size > 1 }, settings) }];
+    const tagged = new Set();
+    const lines = parts
+      .filter((p) => TAG_HINT[p.kind])
+      .map((p) => {
+        const people = [...new Map(p.shown.map(nextStepPerson).filter(Boolean).map((x) => [x.name, x])).values()];
+        if (!people.length) return "";
+        const names = people.map((x) => (tagged.has(x.name) ? `*${x.name}*` : (tagged.add(x.name), tag(x))));
+        return `👆 ${CARD_EMOJI[p.kind]} ${SECTION_NAME[p.kind]}: ${names.join(" · ")}: ${TAG_HINT[p.kind]}`;
+      })
+      .filter(Boolean);
+    if (lines.length) messages.push({ text: lines.join("\n") });
+    return { messages, threadKey: `summary-${connection.id || "chat"}-${today}` };
   }
 
   const sections = parts.map((p) => [p.heading, ...p.shown.map(line), p.more].filter(Boolean).join("\n")).concat(extras);
@@ -267,6 +267,9 @@ function peopleToTag(t) {
 function nextStepPerson(t) {
   return realPerson(t.nextPerson || (t.next ? { name: t.next } : null)) || t.owner?.person || null;
 }
+
+const CARD_EMOJI = { overdue: "🔴", coming: "🗓️" };
+const SECTION_NAME = { overdue: "Past due", coming: "Coming up" };
 
 // What the tag line under a card asks of the people on those tasks.
 const TAG_HINT = {

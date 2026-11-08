@@ -199,31 +199,35 @@ test("the same task filed twice shows once, saying how many", () => {
   assert.match(text, /\*Your album from Storibox at SlotZilla Las Vegas\* \(2 tasks\) — quiet 2 weeks/);
 });
 
-test("in Google Chat: each section's card, then a line under it tagging the people on those tasks with what to do", () => {
+test("in Google Chat: one message with the cards, then one reply in its thread tagging each person once", () => {
   const settings = { taskUrl: "https://z/{id}", people: [{ email: "tim@zinspector.com", googleChatId: "111" }, { email: "laura@zinspector.com", googleChatId: "222" }] };
   const ago = (days) => new Date(MONDAY.getTime() - days * 864e5).toISOString();
   const tasks = [
     task({ id: "1", description: "Booth call", due: "2026-10-27", dueAt: "2026-10-27T14:00:00Z", priority: 5, propertyName: "Marketing.Conferences", nextPerson: laura, todo: { next: "Pick a booth", done: 1, total: 4 } }),
     task({ id: "2", description: "Late one", due: "2026-10-20", status: "In Progress", propertyName: "Marketing.Conferences" }),
+    task({ id: "4", description: "Also soon", due: "2026-10-28", propertyName: "Marketing.Conferences" }),
     task({ id: "3", description: "Gone quiet", assignee: laura, propertyName: "Marketing.Conferences", lastActivity: ago(20) }),
   ];
-  const { messages } = buildDigest(weekly, tasks, settings, MONDAY);
-  assert.equal(messages.length, 5);
+  const { messages, threadKey } = buildDigest({ ...weekly, id: "c1" }, tasks, settings, MONDAY);
+  assert.equal(threadKey, "summary-c1-2026-10-26");
+  assert.equal(messages.length, 2);
   assert.equal(messages[0].text, "*Happy Monday, Marketing tasks.* Here's the week ahead.");
-  assert.equal(messages[0].cardsV2[0].card.header.title, "🔴 Past due · 1");
-  assert.equal(messages[1].text, "👆 <users/111>: already done? Close it in zInspector so it drops off. Still on it? Set a new date.");
-  assert.equal(messages[2].cardsV2[0].card.header.title, "🗓️ Coming up · 1");
-  // Laura has the next step on the booth call.
-  assert.equal(messages[3].text, "👆 <users/222>: still on track? If plans changed, update the due date.");
-  assert.deepEqual(messages[4].cardsV2.map((c) => c.card.header?.title), ["💤 Quiet · 1", undefined]);
-  assert.equal(messages[4].text, undefined); // quiet: no tags
-  assert.deepEqual(messages[2].cardsV2[0].card.sections[0].widgets[0].decoratedText, {
+  assert.deepEqual(messages[0].cardsV2.map((c) => c.card.header?.title), ["🔴 Past due · 1", "🗓️ Coming up · 2", "💤 Quiet · 1", undefined]);
+  // Tim is tagged on the past-due line and named (no second ping) on coming up; Laura has the booth call's next step.
+  assert.equal(
+    messages[1].text,
+    [
+      "👆 🔴 Past due: <users/111>: already done? Close it in zInspector so it drops off. Still on it? Set a new date.",
+      "👆 🗓️ Coming up: <users/222> · *Tim Wallace*: still on track? If plans changed, update the due date.",
+    ].join("\n"),
+  );
+  assert.deepEqual(messages[0].cardsV2[1].card.sections[0].widgets[0].decoratedText, {
     text: '<b>Booth call</b><br><font color="#e37400">due tomorrow at 7:00am</font> · <font color="#d93025">Highest priority</font> · Tim Wallace (next: Laura E.) · Next: Pick a booth (1 of 4)',
     wrapText: true,
     button: { text: "Open", onClick: { openLink: { url: "https://z/1" } } },
   }); // one area: no area label; normal priority isn't shown
-  assert.equal(messages[4].cardsV2[0].card.sections[0].collapsible, true);
-  assert.equal(messages[4].cardsV2.at(-1).card.sections[0].widgets.at(-1).buttonList.buttons[0].text, "Open the task list");
+  assert.equal(messages[0].cardsV2[2].card.sections[0].collapsible, true);
+  assert.equal(messages[0].cardsV2.at(-1).card.sections[0].widgets.at(-1).buttonList.buttons[0].text, "Open the task list");
 });
 
 test("with only quiet tasks, the greeting rides on the cards", () => {
@@ -455,10 +459,12 @@ test("with an API key, saving looks up the properties and the summary reads thei
     assert.deepEqual(reads.map((a) => a.url.searchParams.get("Property")), ["903925", "2206214", "2962118"]);
     assert.equal(reads[0].headers.Origin, ORIGIN);
     const posted = calls.chat.map((c) => c.body);
-    // past-due card, its tag line, coming-up card, its tag line, closing card
-    assert.deepEqual(posted.map((b) => (b.cardsV2 ? "card" : "text")), ["card", "text", "card", "text", "card"]);
-    assert.match(posted[1].text, /^👆 <users\/777>: already done\? Close it/);
-    assert.match(posted[3].text, /^👆 <users\/777>: still on track\?/);
+    // The summary, then the tags as a reply in its thread.
+    assert.deepEqual(posted.map((b) => (b.cardsV2 ? "cards" : "text")), ["cards", "text"]);
+    const urls = calls.chat.map((c) => new URL(c.url).searchParams);
+    assert.ok(urls.every((p) => p.get("threadKey") === urls[0].get("threadKey") && p.get("threadKey").startsWith("summary-")));
+    assert.equal(urls[0].get("messageReplyOption"), "REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD");
+    assert.equal(posted[1].text, "👆 🔴 Past due: <users/777>: already done? Close it in zInspector so it drops off. Still on it? Set a new date.\n👆 🗓️ Coming up: *Tim Wallace*: still on track? If plans changed, update the due date.");
     const lines = posted.flatMap(cardLines).join("\n");
     // Two areas in this summary, so each task says which.
     assert.match(lines, /## 🔴 Past due · 1\nBizDev \/ Strategic \| <b>Idea: a chat message[^<]*<\/b><br><font color="#d93025">5 days overdue<\/font> · Tim Wallace\n/);

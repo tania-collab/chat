@@ -160,8 +160,16 @@ async function sendDigest(env, connection, now = new Date(), cache = new Map(), 
   const messages = payload.messages || [payload];
   if (preview) return { ok: true, messages: messages.map((m) => ({ text: m.text || "", cards: (m.cardsV2 || []).map((c) => c.card) })) };
   let result;
+  // A Google Chat summary's messages share a thread: the summary, and the tags as a reply in it.
+  let url = connection.chatUrl;
+  if (payload.threadKey) {
+    const u = new URL(connection.chatUrl);
+    u.searchParams.set("threadKey", payload.threadKey);
+    u.searchParams.set("messageReplyOption", "REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD");
+    url = u.toString();
+  }
   for (const message of messages) {
-    const res = await fetch(connection.chatUrl, {
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json; charset=UTF-8" },
       body: JSON.stringify(message),
