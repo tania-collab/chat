@@ -45,7 +45,7 @@ edited messages stay as written.
 
 **Summary** (per chat, in its Settings): one message with the greeting and a card per section, then one reply in its
 thread @mentioning the people with the next step on past-due and coming-up tasks (when their chat id is on file
-under People) and saying what to do. Each person is @mentioned once; a later line names them without a second ping.
+under People) once each, and saying what to do.
 No due date and quiet start collapsed and tag nobody.
 
 ```
@@ -58,8 +58,8 @@ Happy Monday, zMarketing. Here's the week ahead.
 │ due Thu · Highest priority · Athina G. (next to-do)                      │
 ┌ 📅 No due date · 3 new ┐ ┌ 💤 Quiet · 5 ┐ (collapsed)   Plus 74 older… · [Open the task list]
   ↳ 1 reply:
-    👆 🔴 Past due: @Laura E. · @Tim Wallace: already done? Close it in zInspector so it drops off. Still on it? Set a new date.
-    👆 🗓️ Coming up: @Athina Gkouziadi · Laura E.: still on track? If plans changed, update the due date.
+    👆 @Laura E. · @Tim Wallace · @Athina Gkouziadi: you have tasks above. Already done? Close it in zInspector so it
+       drops off. Plans changed? Update the due date.
 ```
 
 Priority shows only when it's high or highest; the area shows when the summary covers more than one. Slack gets the same summary as text. Each chat chooses:

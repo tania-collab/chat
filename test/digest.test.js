@@ -199,7 +199,7 @@ test("the same task filed twice shows once, saying how many", () => {
   assert.match(text, /\*Your album from Storibox at SlotZilla Las Vegas\* \(2 tasks\) — quiet 2 weeks/);
 });
 
-test("in Google Chat: one message with the cards, then one reply in its thread tagging each person once", () => {
+test("in Google Chat: one message with the cards, then one reply tagging each person once with what to do", () => {
   const settings = { taskUrl: "https://z/{id}", people: [{ email: "tim@zinspector.com", googleChatId: "111" }, { email: "laura@zinspector.com", googleChatId: "222" }] };
   const ago = (days) => new Date(MONDAY.getTime() - days * 864e5).toISOString();
   const tasks = [
@@ -213,13 +213,10 @@ test("in Google Chat: one message with the cards, then one reply in its thread t
   assert.equal(messages.length, 2);
   assert.equal(messages[0].text, "*Happy Monday, Marketing tasks.* Here's the week ahead.");
   assert.deepEqual(messages[0].cardsV2.map((c) => c.card.header?.title), ["🔴 Past due · 1", "🗓️ Coming up · 2", "💤 Quiet · 1", undefined]);
-  // Tim is tagged on the past-due line and named (no second ping) on coming up; Laura has the booth call's next step.
+  // Tim (past due, and coming up) is tagged once; Laura has the booth call's next step.
   assert.equal(
     messages[1].text,
-    [
-      "👆 🔴 Past due: <users/111>: already done? Close it in zInspector so it drops off. Still on it? Set a new date.",
-      "👆 🗓️ Coming up: <users/222> · *Tim Wallace*: still on track? If plans changed, update the due date.",
-    ].join("\n"),
+    "👆 <users/111> · <users/222>: you have tasks above. Already done? Close it in zInspector so it drops off. Plans changed? Update the due date.",
   );
   assert.deepEqual(messages[0].cardsV2[1].card.sections[0].widgets[0].decoratedText, {
     text: '<b>Booth call</b><br><font color="#e37400">due tomorrow at 7:00am</font> · <font color="#d93025">Highest priority</font> · Tim Wallace (next: Laura E.) · Next: Pick a booth (1 of 4)',
@@ -464,7 +461,7 @@ test("with an API key, saving looks up the properties and the summary reads thei
     const urls = calls.chat.map((c) => new URL(c.url).searchParams);
     assert.ok(urls.every((p) => p.get("threadKey") === urls[0].get("threadKey") && p.get("threadKey").startsWith("summary-")));
     assert.equal(urls[0].get("messageReplyOption"), "REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD");
-    assert.equal(posted[1].text, "👆 🔴 Past due: <users/777>: already done? Close it in zInspector so it drops off. Still on it? Set a new date.\n👆 🗓️ Coming up: *Tim Wallace*: still on track? If plans changed, update the due date.");
+    assert.equal(posted[1].text, "👆 <users/777>: you have tasks above. Already done? Close it in zInspector so it drops off. Plans changed? Update the due date.");
     const lines = posted.flatMap(cardLines).join("\n");
     // Two areas in this summary, so each task says which.
     assert.match(lines, /## 🔴 Past due · 1\nBizDev \/ Strategic \| <b>Idea: a chat message[^<]*<\/b><br><font color="#d93025">5 days overdue<\/font> · Tim Wallace\n/);
