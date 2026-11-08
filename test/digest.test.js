@@ -127,7 +127,7 @@ test("going quiet lists recently quiet tasks first, and only counts the ones dro
     text,
     /^\*No activity for 14\+ days\*\n💤 \*WaterGuru\* — quiet 2 weeks · \*Tim Wallace\* · In Progress\n💤 \*Slipping\* — quiet 6 weeks · \*Tim Wallace\*$/m,
   );
-  assert.match(text, /^Plus 2 older tasks with no activity for over 3 months\. Worth a clean-up\? <https:\/\/dashboard\.zinspector\.com\/\|Review in zInspector>$/m);
+  assert.match(text, /^Plus 2 older tasks with no activity for over 3 months\. Worth a clean-up\? <https:\/\/dashboard\.zinspector\.com\/task-list\?active=true&mytasks=false\|Review in zInspector>$/m);
   assert.match(text, /^🟠 \*Due soon and quiet\* — due tomorrow · \*Tim Wallace\*$/m);
   assert.doesNotMatch(text, /Keyrenter|Ancient|Fresh/);
   const noLimit = buildText({ ...weekly, summary: { schedule: "weekly", quietUpTo: 0 } }, tasks, {}, MONDAY).text;
@@ -173,7 +173,7 @@ test("past due and coming up list everything; no-date and quiet show 5 and count
   assert.equal((text.match(/Late \d/g) || []).length, 7);
   assert.equal((text.match(/Soon \d/g) || []).length, 7);
   assert.equal((text.match(/Quiet \d/g) || []).length, 5);
-  assert.match(text, /^Plus 2 more quiet tasks\. <https:\/\/dashboard\.zinspector\.com\/\|See them in zInspector>$/m);
+  assert.match(text, /^Plus 2 more quiet tasks\. <https:\/\/dashboard\.zinspector\.com\/task-list\?active=true&mytasks=false\|See them in zInspector>$/m);
 });
 
 test("no due date lists only tasks from the last 7 days, and counts the older ones", () => {
@@ -221,7 +221,7 @@ test("in Google Chat, a line tags the people on the listed tasks and each task i
   });
   assert.equal(rest.length, 0);
   assert.match(next.decoratedText.text, /^Next: Pick a booth <i>\(1 of 4 done\)<\/i>$/);
-  assert.equal(sections.at(-1).widgets.at(-1).buttonList.buttons[0].text, "Open zInspector");
+  assert.equal(sections.at(-1).widgets.at(-1).buttonList.buttons[0].text, "Open the task list");
 });
 
 test("a task's pending to-do shows under it", () => {
@@ -270,7 +270,7 @@ test("the weekly summary: tasks by urgency, each tagging the people on it, with 
   const footer = rest[3].split("\n");
   assert.equal(footer[0], "Last week the team opened 1 and wrapped up 1 🎉");
   assert.ok(CLOSERS.weekly.includes(footer[1]));
-  assert.equal(footer[2], "<https://dashboard.zinspector.com/|Open zInspector →>");
+  assert.equal(footer[2], "<https://dashboard.zinspector.com/task-list?active=true&mytasks=false|Open the task list in zInspector →>");
 });
 
 test("the opening line greets by time of day and Mondays; a chat's own opening line is used as written", () => {
