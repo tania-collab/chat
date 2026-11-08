@@ -5,11 +5,12 @@ import worker from "../src/worker.js";
 import { makeEnv, admin, hook, withChat, created, withStatus, GCHAT_URL, ORIGIN } from "./helpers.js";
 
 // A posted Google Chat summary: the tagging line, and the card's text (section headers and rows) one per line.
-const cardOf = (body) => body.cardsV2[0].card;
 const cardLines = (body) =>
-  cardOf(body).sections.flatMap((s) => [
-    ...(s.header ? [`## ${s.header}`] : []),
-    ...s.widgets.map((w) => (w.decoratedText ? [w.decoratedText.topLabel, w.decoratedText.text, w.decoratedText.bottomLabel].filter(Boolean).join(" | ") : w.textParagraph?.text || "")),
+  body.cardsV2.flatMap(({ card }) => [
+    ...(card.header ? [`## ${card.header.title}`] : []),
+    ...card.sections.flatMap((s) =>
+      s.widgets.map((w) => (w.decoratedText ? [w.decoratedText.topLabel, w.decoratedText.text].filter(Boolean).join(" | ") : w.textParagraph?.text || "")),
+    ),
   ]);
 
 // The summary's text layout (Slack's, and what the Google Chat card shows), whatever the chat app.
@@ -198,30 +199,25 @@ test("the same task filed twice shows once, saying how many", () => {
   assert.match(text, /\*Your album from Storibox at SlotZilla Las Vegas\* \(2 tasks\) — quiet 2 weeks/);
 });
 
-test("in Google Chat, a line tags the people on the listed tasks and each task is laid out like the alert cards", () => {
+test("in Google Chat: who's needed and why, then a card per section with two-line tasks", () => {
   const settings = { taskUrl: "https://z/{id}", people: [{ email: "tim@zinspector.com", googleChatId: "111" }, { email: "laura@zinspector.com", googleChatId: "222" }] };
+  const ago = (days) => new Date(MONDAY.getTime() - days * 864e5).toISOString();
   const tasks = [
-    task({ id: "1", description: "Booth call", due: "2026-10-27", dueAt: "2026-10-27T14:00:00Z", priority: 5, propertyName: "Marketing.BizDev.Strategic", nextPerson: laura, todo: { next: "Pick a booth", done: 1, total: 4 } }),
+    task({ id: "1", description: "Booth call", due: "2026-10-27", dueAt: "2026-10-27T14:00:00Z", priority: 5, propertyName: "Marketing.Conferences", nextPerson: laura, todo: { next: "Pick a booth", done: 1, total: 4 } }),
     task({ id: "2", description: "Late one", due: "2026-10-20", status: "In Progress", propertyName: "Marketing.Conferences" }),
+    task({ id: "3", description: "Gone quiet", assignee: laura, propertyName: "Marketing.Conferences", lastActivity: ago(20) }),
   ];
   const { text, cardsV2 } = buildDigest(weekly, tasks, settings, MONDAY);
-  assert.equal(text, "*Happy Monday, Marketing tasks.* Here's the week ahead. <users/111> <users/222>");
-  const { header, sections } = cardsV2[0].card;
-  assert.deepEqual(header, { title: "Week of Oct 26", subtitle: "1 past due · 1 coming up" });
-  assert.equal(sections[0].header, "Past due · already done? Close it in zInspector so it drops off.");
-  const [head, clock, next, ...rest] = sections[1].widgets;
-  assert.deepEqual(head.decoratedText, {
-    text: "<b>Booth call</b>", wrapText: true, startIcon: { knownIcon: "DESCRIPTION" }, topLabel: "BizDev / Strategic",
+  assert.equal(text, "*Happy Monday, Marketing tasks.* Here's the week ahead.\n*Who's needed:* <users/111>: 1 past due, 1 coming up · <users/222>: 1 coming up, 1 quiet");
+  assert.deepEqual(cardsV2.map((c) => c.card.header?.title), ["🔴 Past due · 1", "🗓️ Coming up · 1", "💤 Quiet · 1", undefined]);
+  assert.equal(cardsV2[0].card.header.subtitle, "Already done? Close it in zInspector so it drops off.");
+  assert.deepEqual(cardsV2[1].card.sections[0].widgets[0].decoratedText, {
+    text: '<b>Booth call</b><br><font color="#e37400">due tomorrow at 7:00am</font> · <font color="#d93025">Highest priority</font> · Tim Wallace (next: Laura E.) · Next: Pick a booth (1 of 4)',
+    wrapText: true,
     button: { text: "Open", onClick: { openLink: { url: "https://z/1" } } },
-  });
-  assert.deepEqual(clock.decoratedText, {
-    startIcon: { knownIcon: "CLOCK" },
-    text: '<font color="#e37400">Due tomorrow at 7:00am</font> · <font color="#d93025">Highest priority</font>',
-    wrapText: true, bottomLabel: "Tim Wallace (next: Laura E.)",
-  });
-  assert.equal(rest.length, 0);
-  assert.match(next.decoratedText.text, /^Next: Pick a booth <i>\(1 of 4 done\)<\/i>$/);
-  assert.equal(sections.at(-1).widgets.at(-1).buttonList.buttons[0].text, "Open the task list");
+  }); // one area: no area label; normal priority isn't shown
+  assert.equal(cardsV2[2].card.sections[0].collapsible, true);
+  assert.equal(cardsV2.at(-1).card.sections[0].widgets.at(-1).buttonList.buttons[0].text, "Open the task list");
 });
 
 test("the 'plus N more' lines link to the properties those tasks are on, with counts", () => {
@@ -337,12 +333,10 @@ test("without an API key, Send the summary now lists the tasks the app has seen"
     const res = await (await admin(env, "POST", `/api/connections/${c.id}/digest`)).json();
     assert.equal(res.ok, true);
     const body = calls.at(-1).body;
-    assert.equal(cardOf(body).header.subtitle, "1 without a date");
     const lines = cardLines(body);
-    const at = lines.indexOf("## No due date (new in the last 7 days)");
+    const at = lines.indexOf("## 📅 No due date · 1 new");
     assert.ok(at >= 0);
-    assert.match(lines[at + 1], /^Conferences \| <b>Second task<\/b>$/);
-    assert.match(lines[at + 2], /No due date yet<\/font> · .*Normal priority<\/font> \| Tania Aquirre$/);
+    assert.equal(lines[at + 1], '<b>Second task</b><br><font color="#5f6368">no due date</font> · Tania Aquirre');
     assert.ok(lines.includes("Last week the team opened 2 and wrapped up 1 🎉"));
     assert.ok(lines.includes("Nothing past due 👍"));
   });
@@ -447,10 +441,11 @@ test("with an API key, saving looks up the properties and the summary reads thei
     assert.deepEqual(reads.map((a) => a.url.searchParams.get("Property")), ["903925", "2206214", "2962118"]);
     assert.equal(reads[0].headers.Origin, ORIGIN);
     const body = calls.chat.at(-1).body;
-    assert.match(body.text, /<users\/777>$/); // tagged once, above the card
+    assert.match(body.text, /\n\*Who's needed:\* <users\/777>: 1 past due, 1 coming up$/);
     const lines = cardLines(body).join("\n");
-    assert.match(lines, /BizDev \/ Strategic \| <b>Idea: a chat message[^<]*<\/b>\n<font color="#d93025">5 days overdue<\/font> · <font color="#5f6368">Normal priority<\/font> \| Tim Wallace · In Progress/);
-    assert.match(lines, /<b>Conference: PTN[^<]*<\/b>\n<font color="#5f6368">Due \w+<\/font>.*\| Tim Wallace · Approval Requested\nNext: Get attendee list <i>\(1 of 2 done\)<\/i>/);
+    // Two areas in this summary, so each task says which.
+    assert.match(lines, /## 🔴 Past due · 1\nBizDev \/ Strategic \| <b>Idea: a chat message[^<]*<\/b><br><font color="#d93025">5 days overdue<\/font> · Tim Wallace\n/);
+    assert.match(lines, /## 🗓️ Coming up · 1\nConferences \| <b>Conference: PTN[^<]*<\/b><br><font color="#5f6368">due \w+<\/font> · Tim Wallace · Next: Get attendee list \(1 of 2\)/);
   });
 });
 
@@ -495,7 +490,7 @@ test("Preview the summary shows the text with the form's unsaved settings, and p
     const r = await preview({ onlyDated: false, intro: "Hello [Chat name]" });
     assert.equal(r.ok, true);
     assert.match(r.preview, /^Hello Mkt/);
-    assert.ok(r.card.sections.length > 1);
+    assert.ok(r.cards.length >= 2);
     assert.equal(calls.length, posted);
     const saved = (await (await admin(env, "GET", "/api/state")).json()).connections[0].summary;
     assert.equal(saved.intro, ""); // previewing doesn't save

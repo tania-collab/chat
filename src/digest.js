@@ -13,7 +13,7 @@ const PROPERTY_PAGE = "https://dashboard.zinspector.com/property/view/";
 const SHORT_LIST = 5;
 // "No due date" lists only tasks this new: they're the ones to date now.
 const NEW_TASK_DAYS = 7;
-// Plain headings: the tasks under them carry the message.
+// Plain headings (the text layout's): the tasks under them carry the message.
 const SECTIONS = {
   // Often the work is done and only the task is still open.
   overdue: () => "*Past due* · already done? Close it in zInspector so it drops off.",
@@ -21,6 +21,7 @@ const SECTIONS = {
   undated: () => `*No due date* (new in the last ${NEW_TASK_DAYS} days)`,
   quiet: (s) => `*No activity for ${s.quietDays}+ days*`,
 };
+const KIND_OF = new Map(Object.entries(SECTIONS).map(([kind, heading]) => [heading, kind]));
 const NOT_OPEN = ["canceled", "deferred"]; // finished in zInspector without being done
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -210,7 +211,8 @@ export function buildDigest(connection, tasks, settings = {}, now = new Date(), 
       const shown = max == null ? list : list.slice(0, max);
       const rest_ = list.slice(shown.length);
       const hidden = rest_.reduce((n, t) => n + (t.copies || 1), 0);
-      return { heading: heading(summary), shown, more: hidden ? more(hidden, rest(hidden), rest_) : "" };
+      const total = list.reduce((n, t) => n + (t.copies || 1), 0);
+      return { kind: KIND_OF.get(heading), heading: heading(summary), shown, total, more: hidden ? more(hidden, rest(hidden), rest_) : "" };
     });
   const extras = [];
   if (olderUndated && summary.onlyDated === false) {
@@ -227,13 +229,13 @@ export function buildDigest(connection, tasks, settings = {}, now = new Date(), 
     rotate(weekly ? CLOSERS.weekly : CLOSERS.daily, today),
   ].filter(Boolean);
 
-  // Google Chat: one line tagging everyone on the listed tasks (cards can't @mention), then the list as a card.
+  // Google Chat: the greeting and who's needed for what (cards can't @mention), then a card per section.
   if (connection.platform === "google-chat" && format !== "text") {
-    const shownTasks = parts.flatMap((p) => p.shown);
-    const tags = [...new Set(shownTasks.flatMap(peopleToTag).map((p) => tag(p)).filter((m) => m.startsWith("<") || m.startsWith("@@")))];
+    const needed = whoIsNeeded(parts, tag);
+    const areas = new Set(parts.flatMap((p) => p.shown).map((t) => t.propertyName || ""));
     return {
-      text: [intro, ...tags].join(" "),
-      cardsV2: [digestCard({ title: weekly ? `Week of ${formatDay(mondayOf(today), false)}` : longDay(today), counts, parts, extras, notes }, settings)],
+      text: [intro, needed && `*Who's needed:* ${needed}`].filter(Boolean).join("\n"),
+      cardsV2: digestCards({ parts, extras, notes, summary, showArea: areas.size > 1 }, settings),
     };
   }
 
@@ -248,57 +250,82 @@ export function buildDigest(connection, tasks, settings = {}, now = new Date(), 
 // The people a listed task tags: its owner, and the next to-do person when that's someone else.
 function peopleToTag(t) {
   const next = realPerson(t.nextPerson || (t.next ? { name: t.next } : null));
-  return [t.owner?.person, next].filter((p) => p?.name);
+  return [t.owner?.person, next].filter((p, i, all) => p?.name && all.findIndex((q) => q?.name === p.name) === i);
 }
 
-// The alert cards' colors: red for overdue and highest priority, orange for high, amber for today or tomorrow.
-const COLOR = { overdue: "#d93025", highest: "#d93025", high: "#e8710a", soon: "#e37400", later: "#5f6368", quiet: "#5f6368", none: "#5f6368", normal: "#5f6368", low: "#5f6368" };
-const ICON = { overdue: "CLOCK", soon: "CLOCK", later: "CLOCK", none: "CLOCK", quiet: "CLOCK" };
+const KIND_WORDS = { overdue: "past due", coming: "coming up", undated: "with no due date", quiet: "quiet" };
 
-// The summary card: a header with the counts, a section per group, and each task laid out like the alert
-// cards (area, title and Open; a clock row with when and priority in color; who and status; the next step).
-function digestCard({ title, counts, parts, extras, notes }, settings) {
-  const sections = parts.map((p) => ({
-    header: escapeHtml(p.heading.replace(/\*/g, "")),
-    widgets: [
-      ...p.shown.flatMap((t, i) => [...(i ? [{ divider: {} }] : []), ...taskRows(t, taskUrl(t.id, settings.taskUrl))]),
-      ...(p.more ? [{ textParagraph: { text: chatToHtml(p.more) } }] : []),
-    ],
-  }));
-  if (extras.length) sections.push({ widgets: extras.map((e) => ({ textParagraph: { text: chatToHtml(e) } })) });
-  sections.push({
-    widgets: [
-      ...notes.map((n) => ({ textParagraph: { text: escapeHtml(n) } })),
-      { buttonList: { buttons: [{ text: "Open the task list", onClick: { openLink: { url: DASHBOARD } } }] } },
-    ],
-  });
-  const header = counts.length ? { title, subtitle: counts.join(" · ") } : { title };
-  return { cardId: "summary", card: { header, sections } };
-}
-
-function taskRows(t, link) {
-  const title = titleOf(t).replace(/\s*\|\s*/g, " – ");
-  const tone = t.quiet ? "quiet" : t.overdue ? "overdue" : t.daysLeft != null && t.daysLeft <= 1 ? "soon" : t.dueDate ? "later" : "none";
-  const when = t.quiet ? `quiet ${quietFor(t.quietDays)}` : t.note ? t.note.replace(/^./, (c) => c.toUpperCase()) : "No due date yet";
-  const priority = priorityOf(t.priority);
-  const head = { text: `<b>${escapeHtml(title)}</b>${t.copies > 1 ? ` (${t.copies} tasks)` : ""}`, wrapText: true, startIcon: { knownIcon: "DESCRIPTION" } };
-  const area = shortArea(t.propertyName) || String(t.type || "").replace(/ Required$/, "");
-  if (area) head.topLabel = area;
-  if (link) head.button = { text: "Open", onClick: { openLink: { url: link } } };
-  const who = peopleOn(t, (p) => p.name);
-  const status = t.status && !/^new$/i.test(t.status) ? t.status : "";
-  const clock = {
-    startIcon: { knownIcon: ICON[tone] },
-    text: [`<font color="${COLOR[tone]}">${escapeHtml(when)}</font>`, `<font color="${COLOR[priority.tone]}">${escapeHtml(priority.label)}</font>`].join(" · "),
-    wrapText: true,
-  };
-  const people = [who, status].filter(Boolean).join(" · ");
-  if (people) clock.bottomLabel = people;
-  const rows = [{ decoratedText: head }, { decoratedText: clock }];
-  if (t.todo?.next) {
-    rows.push({ decoratedText: { startIcon: { knownIcon: "BOOKMARK" }, text: `Next: ${escapeHtml(t.todo.next)} <i>(${t.todo.done} of ${t.todo.total} done)</i>`, wrapText: true } });
+// "@Tim: 1 past due · @Athina: 1 past due, 1 coming up": why each person is tagged, most to do first. Only the
+// tasks shown count (past due and coming up in full).
+function whoIsNeeded(parts, tag) {
+  const byPerson = new Map();
+  for (const part of parts) {
+    for (const t of part.shown) {
+      for (const p of peopleToTag(t)) {
+        const entry = byPerson.get(p.name) || { person: p, counts: {}, total: 0 };
+        entry.counts[part.kind] = (entry.counts[part.kind] || 0) + 1;
+        entry.total += 1;
+        byPerson.set(p.name, entry);
+      }
+    }
   }
-  return rows;
+  return [...byPerson.values()]
+    .sort((a, b) => (b.counts.overdue || 0) - (a.counts.overdue || 0) || b.total - a.total)
+    .map((e) => `${tag(e.person)}: ${Object.keys(KIND_WORDS).filter((k) => e.counts[k]).map((k) => `${e.counts[k]} ${KIND_WORDS[k]}`).join(", ")}`)
+    .join(" · ");
+}
+
+const COLOR = { overdue: "#d93025", highest: "#d93025", high: "#e8710a", soon: "#e37400", later: "#5f6368", quiet: "#5f6368", none: "#5f6368" };
+const CARD_HEAD = {
+  overdue: (p) => ({ title: `🔴 Past due · ${p.total}`, subtitle: "Already done? Close it in zInspector so it drops off." }),
+  coming: (p, s) => ({ title: `🗓️ Coming up · ${p.total}`, subtitle: `Due in the next ${s.days === 1 ? "day" : `${s.days} days`}` }),
+  undated: (p) => ({ title: `📅 No due date · ${p.total} new`, subtitle: "Created this week. When should they be done?" }),
+  quiet: (p, s) => ({ title: `💤 Quiet · ${p.total}`, subtitle: `No activity for ${s.quietDays}+ days. Still on your radar?` }),
+};
+
+// A card per section, its header the section's name and count. Each task takes two lines: the title with an Open
+// button, then when (in color), priority when it's high, who, and the next step. Quiet and no-date start
+// collapsed. A last card holds the "plus N more" lines, the closing line and a button.
+function digestCards({ parts, extras, notes, summary, showArea }, settings) {
+  const cards = parts.map((p) => {
+    const widgets = p.shown.flatMap((t, i) => [...(i ? [{ divider: {} }] : []), taskRow(t, taskUrl(t.id, settings.taskUrl), showArea)]);
+    if (p.more) widgets.push({ textParagraph: { text: chatToHtml(p.more) } });
+    const section = { widgets };
+    if (p.kind === "quiet" || p.kind === "undated") Object.assign(section, { collapsible: true, uncollapsibleWidgetsCount: 1 });
+    return { cardId: p.kind, card: { header: CARD_HEAD[p.kind](p, summary), sections: [section] } };
+  });
+  cards.push({
+    cardId: "more",
+    card: {
+      sections: [
+        {
+          widgets: [
+            ...[...extras.map(chatToHtml), ...notes.map(escapeHtml)].map((text) => ({ textParagraph: { text } })),
+            { buttonList: { buttons: [{ text: "Open the task list", onClick: { openLink: { url: DASHBOARD } } }] } },
+          ],
+        },
+      ],
+    },
+  });
+  return cards;
+}
+
+function taskRow(t, link, showArea) {
+  const title = titleOf(t, 140).replace(/\s*\|\s*/g, " – ");
+  const tone = t.quiet ? "quiet" : t.overdue ? "overdue" : t.daysLeft != null && t.daysLeft <= 1 ? "soon" : t.dueDate ? "later" : "none";
+  const when = t.quiet ? `quiet ${quietFor(t.quietDays)}` : t.note || "no due date";
+  const priority = priorityOf(t.priority);
+  const details = [
+    `<font color="${COLOR[tone]}">${escapeHtml(when)}</font>`,
+    priority.tone === "high" || priority.tone === "highest" ? `<font color="${COLOR[priority.tone]}">${escapeHtml(priority.label)}</font>` : "",
+    escapeHtml(peopleOn(t, (p) => p.name)),
+    t.todo?.next ? `Next: ${escapeHtml(t.todo.next)} (${t.todo.done} of ${t.todo.total})` : "",
+  ].filter(Boolean);
+  const row = { text: `<b>${escapeHtml(title)}</b>${t.copies > 1 ? ` (${t.copies} tasks)` : ""}<br>${details.join(" · ")}`, wrapText: true };
+  const area = showArea ? shortArea(t.propertyName) : "";
+  if (area) row.topLabel = area;
+  if (link) row.button = { text: "Open", onClick: { openLink: { url: link } } };
+  return { decoratedText: row };
 }
 
 // "Plus 3 more. <https://…|See them>" (chat markup) as card HTML.
@@ -496,8 +523,8 @@ function mondayOf(ymd) {
   return new Date(d.getTime() - ((d.getUTCDay() + 6) % 7) * DAY_MS).toISOString().slice(0, 10);
 }
 
-function titleOf(t) {
+function titleOf(t, max = 70) {
   const first = String(t.description || "").split("\n")[0].trim();
-  return (first.length > 70 ? first.slice(0, 69) + "…" : first) || t.type || "Task";
+  return (first.length > max ? first.slice(0, max - 1) + "…" : first) || t.type || "Task";
 }
 

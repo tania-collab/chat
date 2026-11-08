@@ -486,7 +486,7 @@ $("f-summaryPreviewBtn").addEventListener("click", function () {
     if (!r.ok) { $("f-summaryPreviewMsg").textContent = r.detail; box.style.display = "none"; return; }
     $("f-summaryPreviewMsg").textContent = "Not posted. This is what the chat would get on " + r.at + ".";
     // The card's HTML comes from the server, which escapes task text and adds only b, i, br, font and a tags.
-    box.innerHTML = formatChat(r.preview).replace(/@@([^@]+)@@/g, "<span class='mention'>@$1</span>") + (r.card ? summaryCardHtml(r.card) : "");
+    box.innerHTML = formatChat(r.preview).replace(/@@([^@]+)@@/g, "<span class='mention'>@$1</span>") + (r.cards || []).map(summaryCardHtml).join("");
     box.style.display = "block";
   }).catch(function (err) { $("f-summaryPreviewMsg").textContent = err.message; });
 });
@@ -524,8 +524,8 @@ function summaryCardHtml(card) {
   var html = "<div class='gcard'>";
   if (card.header) html += "<div class='gcard-title'>" + esc(card.header.title) + "</div>" +
     (card.header.subtitle ? "<div class='gcard-sub'>" + esc(card.header.subtitle) + "</div>" : "");
-  card.sections.forEach(function (sec) {
-    html += "<div class='gcard-sec'>" + (sec.header ? "<div class='gcard-head'>" + sec.header + "</div>" : "");
+  card.sections.forEach(function (sec, i) {
+    html += "<div class='" + (i || card.header ? "gcard-sec" : "") + "'>" + (sec.header ? "<div class='gcard-head'>" + sec.header + "</div>" : "");
     sec.widgets.forEach(function (w) {
       if (w.decoratedText) {
         var d = w.decoratedText, icon = { DESCRIPTION: "📄", CLOCK: "🕒", BOOKMARK: "🔖" }[(d.startIcon || {}).knownIcon] || "";
@@ -538,6 +538,7 @@ function summaryCardHtml(card) {
       else if (w.textParagraph) html += "<div class='gcard-text'>" + w.textParagraph.text + "</div>";
       else if (w.buttonList) html += "<div>" + w.buttonList.buttons.map(function (b) { return "<span class='gcard-btn'>" + esc(b.text) + "</span>"; }).join(" ") + "</div>";
     });
+    if (sec.collapsible) html += "<div class='gcard-sub'>Show more ▾ (collapsed in the chat)</div>";
     html += "</div>";
   });
   return html + "</div>";
