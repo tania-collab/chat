@@ -234,7 +234,7 @@ export function buildDigest(connection, tasks, settings = {}, now = new Date(), 
     const needed = whoIsNeeded(parts, tag);
     const areas = new Set(parts.flatMap((p) => p.shown).map((t) => t.propertyName || ""));
     return {
-      text: [intro, needed && `*Who's needed:* ${needed}`].filter(Boolean).join("\n"),
+      text: [intro, needed].filter(Boolean).join("\n"),
       cardsV2: digestCards({ parts, extras, notes, summary, showArea: areas.size > 1 }, settings),
     };
   }
@@ -253,10 +253,16 @@ function peopleToTag(t) {
   return [t.owner?.person, next].filter((p, i, all) => p?.name && all.findIndex((q) => q?.name === p.name) === i);
 }
 
-const KIND_WORDS = { overdue: "past due", coming: "coming up", undated: "with no due date", quiet: "quiet" };
+// Each count with its card's emoji, so it's clear which card it points to.
+const KIND_WORDS = {
+  overdue: (n) => `🔴 ${n} past due`,
+  coming: (n) => `🗓️ ${n} coming up`,
+  undated: (n) => `📅 ${n} ${n === 1 ? "needs" : "need"} a date`,
+  quiet: (n) => `💤 ${n} quiet`,
+};
 
-// "@Tim: 1 past due · @Athina: 1 past due, 1 coming up": why each person is tagged, most to do first. Only the
-// tasks shown count (past due and coming up in full).
+// One line per person saying why they're tagged, most past due first: "@Tim — 🔴 1 past due · 🗓️ 1 coming up".
+// Only the tasks shown count (past due and coming up in full).
 function whoIsNeeded(parts, tag) {
   const byPerson = new Map();
   for (const part of parts) {
@@ -271,8 +277,8 @@ function whoIsNeeded(parts, tag) {
   }
   return [...byPerson.values()]
     .sort((a, b) => (b.counts.overdue || 0) - (a.counts.overdue || 0) || b.total - a.total)
-    .map((e) => `${tag(e.person)}: ${Object.keys(KIND_WORDS).filter((k) => e.counts[k]).map((k) => `${e.counts[k]} ${KIND_WORDS[k]}`).join(", ")}`)
-    .join(" · ");
+    .map((e) => `${tag(e.person)} — ${Object.keys(KIND_WORDS).filter((k) => e.counts[k]).map((k) => KIND_WORDS[k](e.counts[k])).join(" · ")}`)
+    .join("\n");
 }
 
 const COLOR = { overdue: "#d93025", highest: "#d93025", high: "#e8710a", soon: "#e37400", later: "#5f6368", quiet: "#5f6368", none: "#5f6368" };

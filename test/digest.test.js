@@ -208,7 +208,7 @@ test("in Google Chat: who's needed and why, then a card per section with two-lin
     task({ id: "3", description: "Gone quiet", assignee: laura, propertyName: "Marketing.Conferences", lastActivity: ago(20) }),
   ];
   const { text, cardsV2 } = buildDigest(weekly, tasks, settings, MONDAY);
-  assert.equal(text, "*Happy Monday, Marketing tasks.* Here's the week ahead.\n*Who's needed:* <users/111>: 1 past due, 1 coming up · <users/222>: 1 coming up, 1 quiet");
+  assert.equal(text, "*Happy Monday, Marketing tasks.* Here's the week ahead.\n<users/111> — 🔴 1 past due · 🗓️ 1 coming up\n<users/222> — 🗓️ 1 coming up · 💤 1 quiet");
   assert.deepEqual(cardsV2.map((c) => c.card.header?.title), ["🔴 Past due · 1", "🗓️ Coming up · 1", "💤 Quiet · 1", undefined]);
   assert.equal(cardsV2[0].card.header.subtitle, "Already done? Close it in zInspector so it drops off.");
   assert.deepEqual(cardsV2[1].card.sections[0].widgets[0].decoratedText, {
@@ -441,7 +441,7 @@ test("with an API key, saving looks up the properties and the summary reads thei
     assert.deepEqual(reads.map((a) => a.url.searchParams.get("Property")), ["903925", "2206214", "2962118"]);
     assert.equal(reads[0].headers.Origin, ORIGIN);
     const body = calls.chat.at(-1).body;
-    assert.match(body.text, /\n\*Who's needed:\* <users\/777>: 1 past due, 1 coming up$/);
+    assert.match(body.text, /\n<users\/777> — 🔴 1 past due · 🗓️ 1 coming up$/);
     const lines = cardLines(body).join("\n");
     // Two areas in this summary, so each task says which.
     assert.match(lines, /## 🔴 Past due · 1\nBizDev \/ Strategic \| <b>Idea: a chat message[^<]*<\/b><br><font color="#d93025">5 days overdue<\/font> · Tim Wallace\n/);
