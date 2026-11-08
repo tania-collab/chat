@@ -192,7 +192,7 @@ export const ADMIN_HTML = String.raw`<!doctype html>
       <span class="hint">open tasks nobody has touched lately, due date or not; older ones are only counted</span>
     </div>
     <div class="hint" id="f-summarySource"></div>
-    <label for="f-intro">Opening line <span class="hint">left as a suggested one, it changes each day so it never reads the same; click a detail to add it</span></label>
+    <label for="f-intro">Opening line <span class="hint">left as suggested, it greets by time of day (and on Mondays); click a detail to add it</span></label>
     <input type="text" id="f-intro">
     <div class="details" id="f-introDetails"></div>
     <div class="row" style="margin-top:8px" id="f-summaryPreviewRow">

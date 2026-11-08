@@ -89,9 +89,9 @@ test("tasks nobody is assigned to go under the next to-do, or the manager, as th
   assert.equal(SUMMARY_DEFAULTS.owners, "assigned-or-next");
 
   const { text } = buildDigest({ ...weekly, summary: { schedule: "weekly", owners: "anyone" } }, tasks, {}, MONDAY);
-  assert.match(text, /^🟠 \*next\* — due tomorrow · \*Laura E\.\*, your move$/m);
-  assert.match(text, /^🟠 \*managed\* — due tomorrow · \*Athina G\.\*, you're steering this one$/m);
-  assert.match(text, /^🟠 \*assigned\* — due tomorrow · \*Tim Wallace\*, with \*Laura E\.\* up next$/m);
+  assert.match(text, /^🟠 \*next\* — due tomorrow · \*Laura E\.\* \(next to-do\)$/m);
+  assert.match(text, /^🟠 \*managed\* — due tomorrow · \*Athina G\.\* \(manager\)$/m);
+  assert.match(text, /^🟠 \*assigned\* — due tomorrow · \*Tim Wallace\* \(next: \*Laura E\.\*\)$/m);
 });
 
 test("chats saved with the old assigned checkbox keep their choice", () => {
@@ -112,17 +112,17 @@ test("going quiet lists recently quiet tasks first, and only counts the ones dro
     task({ id: "q7", description: "Ancient", lastActivity: ago(640) }),
   ];
   const { text } = buildDigest(weekly, tasks, {}, MONDAY);
-  assert.match(text, /^_1 coming up in the next 7 days · 2 gone quiet_$/m);
+  assert.match(text, /^_1 coming up · 2 quiet_$/m);
   assert.match(
     text,
-    /^\*💤 Gone quiet\.\* Still on your radar\?\n💤 \*WaterGuru\* — untouched for 2 weeks · \*Tim Wallace\* · In Progress\n💤 \*Slipping\* — untouched for 6 weeks · \*Tim Wallace\*$/m,
+    /^\*No activity for 14\+ days\*\n💤 \*WaterGuru\* — quiet 2 weeks · \*Tim Wallace\* · In Progress\n💤 \*Slipping\* — quiet 6 weeks · \*Tim Wallace\*$/m,
   );
-  assert.match(text, /^📦 2 more have been untouched for 3 months\+\. Time for a clean-up\? <https:\/\/dashboard\.zinspector\.com\/\|Review them in zInspector>$/m);
+  assert.match(text, /^Plus 2 older tasks with no activity for over 3 months\. Worth a clean-up\? <https:\/\/dashboard\.zinspector\.com\/\|Review in zInspector>$/m);
   assert.match(text, /^🟠 \*Due soon and quiet\* — due tomorrow · \*Tim Wallace\*$/m);
   assert.doesNotMatch(text, /Keyrenter|Ancient|Fresh/);
   const noLimit = buildDigest({ ...weekly, summary: { schedule: "weekly", quietUpTo: 0 } }, tasks, {}, MONDAY).text;
-  assert.match(noLimit, /Keyrenter follow up\* — untouched for 4 months/);
-  assert.doesNotMatch(noLimit, /📦/);
+  assert.match(noLimit, /Keyrenter follow up\* — quiet 4 months/);
+  assert.doesNotMatch(noLimit, /older tasks/);
   assert.equal(buildDigest({ ...weekly, summary: { schedule: "weekly", quietDays: 0 } }, tasks.slice(0, 2), {}, MONDAY), null);
 });
 
@@ -135,7 +135,7 @@ test("system accounts aren't tagged: a task waiting on Ticket Notify goes to the
   ];
   const { text } = buildDigest({ ...weekly, summary: { schedule: "weekly", owners: "anyone" } }, tasks, {}, MONDAY);
   assert.match(text, /\*Assigned, bot next\* — due tomorrow · \*Tim Wallace\*$/m);
-  assert.match(text, /\*Bot next, managed\* — due tomorrow · \*Laura E\.\*, you're steering this one$/m);
+  assert.match(text, /\*Bot next, managed\* — due tomorrow · \*Laura E\.\* \(manager\)$/m);
   assert.doesNotMatch(text, /Only bots|Ticket Notify|Z Support/);
 });
 
@@ -175,10 +175,10 @@ test("the weekly summary: tasks by urgency, each tagging the people on it, with 
   const [intro, ...rest] = text.split("\n\n");
   assert.ok(DEFAULT_INTRO.weekly.map((l) => l.replace("[Chat name]", "Marketing tasks").replace("[Week]", "Oct 26")).includes(intro));
   assert.deepEqual(rest.slice(0, 3), [
-    "_2 coming up in the next 7 days · 1 past due_",
-    "*🔴 Past due.* What's one small step that would move each of these forward?\n" +
-      "🔴 <https://z/task/1|webchatTEST> — 3 days past due · <users/111>, with *Laura E.* up next · In Progress",
-    "*🗓️ Coming up.* Here's what's next on the calendar:\n" +
+    "_1 past due · 2 coming up_",
+    "*Past due*\n" +
+      "🔴 <https://z/task/1|webchatTEST> — 3 days overdue · <users/111> (next: *Laura E.*) · In Progress",
+    "*Coming up* (next 7 days)\n" +
       "🟠 <https://z/task/3|Email Campaigns> — due tomorrow · *Laura E.*\n" +
       "🔹 <https://z/task/2|Sponsor Sessions – PMSC 2027> — due Wed · <users/111>",
   ]);
@@ -188,14 +188,17 @@ test("the weekly summary: tasks by urgency, each tagging the people on it, with 
   assert.equal(footer[2], "<https://dashboard.zinspector.com/|Open zInspector →>");
 });
 
-test("the daily opening and closing lines change from day to day; a chat's own opening line is used as written", () => {
+test("the opening line greets by time of day and Mondays; a chat's own opening line is used as written", () => {
   const one = [task({ due: "2026-10-30" })];
-  const days = [0, 1, 2].map((d) => buildDigest(daily, one, {}, new Date(MONDAY.getTime() + d * 864e5)).text);
-  assert.equal(new Set(days.map((t) => t.split("\n")[0])).size, 3);
-  assert.equal(new Set(days.map((t) => t.split("\n").at(-2))).size, 3);
-  assert.match(days[0], /^(☀️|☕|👋) \*.*Marketing tasks/);
+  const tuesday = new Date(MONDAY.getTime() + 864e5);
+  assert.match(buildDigest(weekly, one, {}, MONDAY).text, /^\*Happy Monday, Marketing tasks\.\* Here's the week ahead\.\n/);
+  assert.match(buildDigest(daily, one, {}, tuesday).text, /^\*Good morning, Marketing tasks\.\* Here's where things stand\.\n/);
+  const afternoon = { ...daily, summary: { schedule: "daily", hour: 14 } };
+  assert.match(buildDigest(afternoon, one, {}, tuesday).text, /^\*Hi Marketing tasks,\* here's where things stand\.\n/);
+  assert.match(buildDigest(daily, one, {}, tuesday).text, /\nAnything stuck, or already done\? Reply in this thread\.\n/);
   const reworded = { ...daily, summary: { schedule: "daily", intro: "[Chat name]: [Due count] due, [Overdue count] late, [Unknown]" } };
   assert.match(buildDigest(reworded, one, {}, MONDAY).text, /^Marketing tasks: 1 due, 0 late, \[Unknown\]\n/);
+  assert.equal(summaryOf({ summary: { intro: "☕ *Morning, [Chat name]!* Curious what today holds? Here's where things stand 👇" } }).intro, "");
 });
 
 test("people are @mentioned on their tasks when their chat id is on file, else named in bold; the preview shows names", () => {
@@ -216,7 +219,9 @@ test("stays quiet when nothing matches", () => {
 
 test("titles that would break a chat link are cleaned", () => {
   const { text } = buildDigest(weekly, [task({ id: "9", description: "A <b>|c> task", due: "2026-10-27" })], { taskUrl: "https://z/{id}" }, MONDAY);
-  assert.match(text, /<https:\/\/z\/9\|A  b  c  task>/);
+  assert.match(text, /<https:\/\/z\/9\|A b – c task>/);
+  const pipe = buildDigest(weekly, [task({ id: "8", description: "PTN | 2027 Reunion & Sponsorships", due: "2026-10-27" })], { taskUrl: "https://z/{id}" }, MONDAY);
+  assert.match(pipe.text, /<https:\/\/z\/8\|PTN – 2027 Reunion & Sponsorships>/);
 });
 
 test("without an API key, Send the summary now lists the tasks the app has seen", async () => {
@@ -230,8 +235,8 @@ test("without an API key, Send the summary now lists the tasks the app has seen"
     assert.equal(res.ok, true);
     const { text } = calls.at(-1).body;
     assert.match(text, /^_1 without a date_$/m);
-    assert.match(text, /^\*📅 No date yet\.\* When should these be done\?\n▫️ .*Second task.* — \*Tania Aquirre\*$/m);
-    assert.match(text, /Last week the team opened 2 and wrapped up 1 🎉\nNothing past due\. Love to see it 🙌\n/);
+    assert.match(text, /^\*No due date\*\n▫️ .*Second task.* — \*Tania Aquirre\*$/m);
+    assert.match(text, /Last week the team opened 2 and wrapped up 1 🎉\nNothing past due 👍\n/);
   });
 });
 
@@ -332,7 +337,7 @@ test("with an API key, saving looks up the properties and the summary reads thei
     assert.deepEqual(reads.map((a) => a.url.searchParams.get("Property")), ["903925", "2206214", "2962118"]);
     assert.equal(reads[0].headers.Origin, ORIGIN);
     const { text } = calls.chat.at(-1).body;
-    assert.match(text, /^🔴 .*Idea: a chat message.* — 5 days past due · <users\/777> · In Progress$/m);
+    assert.match(text, /^🔴 .*Idea: a chat message.* — 5 days overdue · <users\/777> · In Progress$/m);
     assert.match(text, /^🔹 .*Conference: PTN.* — due \w+ · <users\/777> · Approval Requested\n      ➡️ Next: Get attendee list _\(1 of 2 done\)_$/m);
   });
 });

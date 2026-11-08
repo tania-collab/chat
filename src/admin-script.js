@@ -361,7 +361,7 @@ function details(html) {
 function formatChat(text) {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/&lt;users\/\d+&gt;/g, "<span class='mention'>@person</span>")
-    .replace(/&lt;(https?:\/\/[^|\s]+?)\|([^&]+?)&gt;/g, "<u>$2</u>")
+    .replace(/&lt;(https?:\/\/[^|\s]+?)\|((?:(?!&gt;).)+?)&gt;/g, "<u>$2</u>")
     .replace(/\*([^*\n]+)\*/g, "<b>$1</b>")
     .replace(/(^|\s)_([^_\n]+)_/g, "$1<i>$2</i>");
 }
