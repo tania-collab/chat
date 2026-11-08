@@ -168,14 +168,11 @@ async function sendDigest(env, connection, now = new Date(), cache = new Map(), 
     u.searchParams.set("messageReplyOption", "REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD");
     url = u.toString();
   }
-  for (const message of messages) {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json; charset=UTF-8" },
-      body: JSON.stringify(message),
-    });
-    result = { ok: res.ok, status: res.status, body: await res.text() };
-    if (!res.ok) break;
+  for (const [i, message] of messages.entries()) {
+    // Google Chat takes about one message a second per space: give the reply a moment.
+    if (i) await sleep(MESSAGE_GAP_MS);
+    result = await post(url, message);
+    if (!result.ok) break;
   }
   const entry = logEntry("digest", event, result, "app");
   await saveActivity(env.RELAY, connection.id, await getActivity(env.RELAY, connection.id), { entry, kind: "test", event });
@@ -198,12 +195,30 @@ async function withProperties(env, input, existing, origin) {
 
 // `payload` is {text} or {text, cardsV2}.
 async function postToChat(connection, event, payload) {
-  const res = await fetch(deliveryUrl(connection, event), {
-    method: "POST",
-    headers: { "Content-Type": "application/json; charset=UTF-8" },
-    body: JSON.stringify(payload),
-  });
-  return { ok: res.ok, status: res.status, body: await res.text() };
+  return post(deliveryUrl(connection, event), payload);
+}
+
+const MESSAGE_GAP_MS = 1200;
+const RETRY_WAITS_MS = [2000, 5000];
+export const timing = { sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)) };
+const sleep = (ms) => timing.sleep(ms);
+
+// Posts one message to the chat. When the chat says "too many messages" (429), waits and tries again, twice;
+// if it still refuses, the reason is said in plain words.
+async function post(url, payload) {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json; charset=UTF-8" },
+      body: JSON.stringify(payload),
+    });
+    const body = await res.text();
+    if (res.status !== 429) return { ok: res.ok, status: res.status, body };
+    if (attempt >= RETRY_WAITS_MS.length) {
+      return { ok: false, status: 429, body: "The chat is getting too many messages at once and asked to slow down. Try again in a minute." };
+    }
+    await sleep(RETRY_WAITS_MS[attempt]);
+  }
 }
 
 // For the chat's card: the last message posted (or failed), and whether zInspector has reached the chat yet.

@@ -234,6 +234,8 @@ them in every account.
 - A wrong or missing token gets 401 and nothing is posted. A connection without a token accepts anyone who
   knows its address; the app flags it.
 - If the chat refuses a message, zInspector gets 502 with the chat's reason, so it shows in its Delivery History.
+- Google Chat accepts about one message a second per space. The summary's reply is sent a moment after the summary,
+  and when the chat answers "too many messages" (429) the app waits and retries twice before giving up.
 - The free KV plan allows 1,000 writes a day; each delivery is one write.
 - Chat webhook URLs and tokens are passwords. They live only in the app's storage, never in this repo.
 
