@@ -187,7 +187,9 @@ export const ADMIN_HTML = String.raw`<!doctype html>
     <div class="row" style="margin-top:8px">
       <label for="f-quietDays" style="margin:0">Going quiet</label>
       <select id="f-quietDays" style="width:auto"></select>
-      <span class="hint">also list open tasks nobody has touched for this long, due date or not</span>
+      <span>up to</span>
+      <select id="f-quietUpTo" style="width:auto"></select>
+      <span class="hint">open tasks nobody has touched lately, due date or not; older ones are only counted</span>
     </div>
     <div class="hint" id="f-summarySource"></div>
     <label for="f-intro">Opening line <span class="hint">left as a suggested one, it changes each day so it never reads the same; click a detail to add it</span></label>

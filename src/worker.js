@@ -9,8 +9,8 @@
 
 import { DEFAULT_COMPLETED, buildMessage, buildPayload, cardFor, skipReason, SKIP_REASONS, AUDIENCES, ALERTS, alertsOf, eventKind, deliveryUrl, render, fieldPaths, templateFor, EVENTS, EXAMPLES, EXAMPLE_PREVIOUS, TEST_MESSAGE } from "./messages.js";
 import { snapshotOf, EXTRA_NAMES } from "./taskview.js";
-import { buildDigest, isSummaryTime, summaryOf, describeSchedule, POST_DAYS, POST_HOURS, MAX_DAYS_AHEAD, OVERDUE_WITHIN, QUIET_DAYS, OWNERS, DEFAULT_INTRO, INTRO_DETAILS } from "./digest.js";
-import { zinspectorConfigured, readsZinspector, openTasksOn, resolveProperties, searchProperties, ZinspectorError } from "./summary.js";
+import { buildDigest, selectTasks, nextSendTime, sendTimeLabel, isSummaryTime, summaryOf, describeSchedule, POST_DAYS, POST_HOURS, MAX_DAYS_AHEAD, OVERDUE_WITHIN, QUIET_DAYS, QUIET_UP_TO, OWNERS, DEFAULT_INTRO, INTRO_DETAILS } from "./digest.js";
+import { zinspectorConfigured, readsZinspector, openTasksOn, resolveProperties, searchProperties, todosOf, ZinspectorError } from "./summary.js";
 import {
   getConnections,
   saveConnections,
@@ -122,6 +122,8 @@ async function sendDigests(env, now) {
   }
 }
 
+const TODO_READS = 10;
+
 // Posts one chat's summary; returns {ok, status, detail}, or null when there was nothing to list. A failed
 // zInspector read is logged in the chat's history (and returned) instead of posting a partial list.
 async function sendDigest(env, connection, now = new Date(), cache = new Map(), { preview = false } = {}) {
@@ -135,6 +137,11 @@ async function sendDigest(env, connection, now = new Date(), cache = new Map(), 
     try {
       const ids = [...new Set(summary.properties.flatMap((p) => p.ids))];
       tasks = await openTasksOn(env, settings.appOrigin, ids, cache);
+      // The next step on the dated tasks it will list (a few reads, within a run's request budget).
+      const dated = selectTasks(tasks, summary, settings, now).filter((t) => t.dueDate).slice(0, TODO_READS);
+      const steps = new Map();
+      for (const t of dated) steps.set(t.id, await todosOf(env, settings.appOrigin, t.id));
+      tasks = tasks.map((t) => (steps.get(t.id) ? { ...t, todo: steps.get(t.id) } : t));
     } catch (err) {
       if (!(err instanceof ZinspectorError)) throw err;
       if (preview) return { ok: false, status: err.status, detail: err.message };
@@ -247,6 +254,7 @@ async function api(request, env, url, user) {
       overdueWithin: OVERDUE_WITHIN,
       owners: OWNERS,
       quietDays: QUIET_DAYS,
+      quietUpTo: QUIET_UP_TO,
       summaryIntro: DEFAULT_INTRO,
       introDetails: INTRO_DETAILS,
       summaryReadsZinspector: zinspectorConfigured(env),
@@ -328,7 +336,10 @@ async function api(request, env, url, user) {
       const resolved = await withProperties(env, input, existing, url.origin);
       if (resolved.error) return json({ error: resolved.error }, 400);
       const connection = { ...existing, summary: cleanSummary(resolved.value.summary, summaryOf(existing)) };
-      return json((await sendDigest(env, connection, new Date(), new Map(), { preview: true })) || { ok: true, empty: true });
+      // As the chat would get it the next time it goes out (or now, when the summary is off).
+      const at = nextSendTime(summaryOf(connection)) || new Date();
+      const result = await sendDigest(env, connection, at, new Map(), { preview: true });
+      return json({ ...(result || { ok: true, empty: true }), at: sendTimeLabel(at, summaryOf(connection)) });
     }
     const result = await sendDigest(env, existing);
     return json(result || { ok: true, empty: true });

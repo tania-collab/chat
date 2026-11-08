@@ -86,6 +86,29 @@ export async function searchProperties(env, origin, query) {
     .slice(0, 100);
 }
 
+// What's left on a task's to-do list: {next, done, total}, or null when it has none or zInspector won't share
+// them (the route isn't documented for API keys, so a refusal just leaves the step out).
+export async function todosOf(env, origin, taskId) {
+  try {
+    const rows = (await readAll(env, origin, "/task/todos/", { Task: String(taskId) }, 1)).filter((r) => String(r.Task ?? r.task ?? taskId) === String(taskId));
+    if (!rows.length) return null;
+    const field = (r, names) => names.map((n) => r[n]).find((v) => v != null);
+    const steps = rows
+      .map((r) => ({
+        text: String(field(r, ["description", "Description", "Name", "name", "Title", "title"]) || "").trim(),
+        done: Boolean(field(r, ["completed", "Completed", "IsCompleted", "isCompleted", "IsDone", "Done"])),
+        order: Number(field(r, ["sort_order", "SortOrder", "Order", "order"]) ?? 0),
+      }))
+      .filter((s) => s.text)
+      .sort((a, b) => a.order - b.order);
+    const next = steps.find((s) => !s.done);
+    return next ? { next: next.text.slice(0, 120), done: steps.filter((s) => s.done).length, total: steps.length } : null;
+  } catch (err) {
+    if (err instanceof ZinspectorError) return null;
+    throw err;
+  }
+}
+
 // A task from zInspector's API in the shape the app keeps from webhooks (see taskview.js snapshotOf).
 export function taskFromApi(t, users = new Map()) {
   const person = (id, name) => (id || name ? { name: name || userName(users.get(id)) || "Someone", email: users.get(id)?.email || "" } : null);

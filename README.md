@@ -75,8 +75,10 @@ The suggested opening and closing lines change from day to day so it never reads
   for every property that starts with it (`Marketing.BizDev*`).
 - **Only tasks with a due date**, and **Include overdue tasks**, overdue in the last 7, 30 (default) or 90 days or any
   time, so tasks forgotten long ago don't fill the list.
-- **Going quiet**: also list open tasks nobody has touched for 7, 14 (default), 30 or 60 days, due date or not, oldest
-  first ("💤 … — no activity for 4 months"). On tasks without due dates, silence is how a missed deadline shows.
+- **Going quiet**: also list open tasks nobody has touched for 7, 14 (default), 30 or 60 days, due date or not, most
+  recently quiet first. On tasks without due dates, silence is how a missed deadline shows. Tasks quiet for longer
+  than 1, 3 (default) or 6 months are only counted ("📦 79 more have been untouched for 3 months+. Time for a
+  clean-up?"), since a weekly nudge helps with what just slipped, not with what was dropped long ago.
   From webhooks it counts from the task's last event the chat received; from zInspector, its last change.
 - **Whose tasks**: assigned only; assigned or the next to-do (default); or assigned, next to-do or the manager. Each
   task tags its assignee (and the next to-do person, "with @Laura up next"); without an assignee it tags the next
@@ -84,8 +86,12 @@ The suggested opening and closing lines change from day to day so it never reads
 
 - **Opening line**: editable, with [Chat name], [Day], [Week], [Days], [Due count] and [Overdue count].
 
-Nothing is posted when nothing matches. **Preview the summary** in the settings shows what the chat would get,
-without posting or saving. **Send the summary now** on a chat's card posts it right away. With a zInspector API key (below) and chosen
+With the API key, dated tasks also show their pending to-do ("➡️ Next: Get attendee list (5 of 6 done)"), read
+from `/api/task/todos/` for up to 10 tasks; if zInspector doesn't share to-dos with the key, the line is left out.
+zInspector's system accounts (Ticket Notify, Z Support) are never tagged.
+
+Nothing is posted when nothing matches. **Preview the summary** in the settings shows what the chat would get the
+next time it goes out, without posting or saving. **Send the summary now** on a chat's card posts it right away. With a zInspector API key (below) and chosen
 properties, the summary reads every open task on those properties from zInspector when it's sent. Without them, it
 lists the tasks zInspector has sent the chat since it was connected. The `[triggers]` cron in `wrangler.toml` runs
 every hour at :30 and sends the summaries due at that hour.
