@@ -73,37 +73,46 @@ test("a property chosen by id matches tasks on it", () => {
   assert.equal(selectTasks(tasks, summary, {}, MONDAY).length, 1);
 });
 
-test("the weekly card: per person, overdue first, with due notes, statuses and last week's numbers", () => {
+test("the weekly summary: each person @mentioned, overdue first, with due notes, statuses, next to-do and last week's numbers", () => {
   const tasks = [
-    task({ id: "1", description: "webchatTEST", due: "2026-10-23", status: "In Progress", createdAt: "2026-10-20T10:00:00Z" }),
+    task({ id: "1", description: "webchatTEST", due: "2026-10-23", status: "In Progress", nextPerson: laura, createdAt: "2026-10-20T10:00:00Z" }),
     task({ id: "2", description: "Sponsor Sessions – PMSC 2027", due: "2026-10-28" }),
     task({ id: "3", description: "Email Campaigns", assignee: laura, due: "2026-10-27" }),
     task({ id: "4", description: "Done thing", status: "Work Complete", finishedAt: "2026-10-22T10:00:00Z" }),
   ];
-  const { card } = buildDigest(weekly, tasks, { taskUrl: "https://z/task/{id}" }, MONDAY, { pulse: true }).cardsV2[0];
-  assert.deepEqual(card.header, { title: "Week of Oct 26 — Marketing tasks", subtitle: "2 due in the next 7 days · 1 overdue" });
-  assert.equal(card.sections[0].header, "Tim Wallace — 2 tasks (1 overdue)");
+  const settings = { taskUrl: "https://z/task/{id}", people: [{ email: "tim@zinspector.com", googleChatId: "111" }] };
+  const { text } = buildDigest(weekly, tasks, settings, MONDAY, { pulse: true });
   assert.equal(
-    card.sections[0].widgets[0].textParagraph.text,
-    '• <a href="https://z/task/1">webchatTEST</a> · overdue since Fri · In Progress<br>• <a href="https://z/task/2">Sponsor Sessions – PMSC 2027</a> · due Wed',
+    text,
+    [
+      "👋 *Happy Monday, Marketing tasks!* Here's the week of Oct 26",
+      "_2 due in the next 7 days · 1 overdue_",
+      "<users/111> · 2 tasks, 1 overdue\n" +
+        "🔴 <https://z/task/1|webchatTEST> — 3 days overdue · In Progress · next: *Laura E.*\n" +
+        "🔹 <https://z/task/2|Sponsor Sessions – PMSC 2027> — due Wed",
+      "*Laura E.* · 1 task\n🟠 <https://z/task/3|Email Campaigns> — due tomorrow",
+      "Last week: 1 new · 1 finished 🎉\n<https://dashboard.zinspector.com/|Open zInspector>",
+    ].join("\n\n"),
   );
-  assert.equal(card.sections[1].header, "Laura E. — 1 task");
-  assert.match(card.sections[1].widgets[0].textParagraph.text, /Email Campaigns<\/a> · due tomorrow$/);
-  assert.equal(card.sections[2].widgets[0].textParagraph.text, "Last week: 1 new · 1 finished 🎉");
 });
 
-test("the daily card is titled with the day", () => {
-  const { card } = buildDigest(daily, [task({ due: "2026-10-26" })], {}, MONDAY).cardsV2[0];
-  assert.deepEqual(card.header, { title: "Mon, Oct 26 — Marketing tasks", subtitle: "1 due in the next 7 days" });
-  assert.match(card.sections[0].widgets[0].textParagraph.text, /A task · due today$/);
-  assert.equal(card.sections[1].widgets[0].textParagraph.text, "Nothing overdue 👏");
+test("the daily summary opens with the day; the opening line can be reworded with details", () => {
+  const one = [task({ due: "2026-10-26" })];
+  assert.match(buildDigest(daily, one, {}, MONDAY).text, /^☀️ \*Good morning, Marketing tasks!\* Here's what's coming up \(Mon, Oct 26\)\n\n/);
+  assert.match(buildDigest(daily, one, {}, MONDAY).text, /A task\* — due today\n\nNothing overdue 👏/);
+  const reworded = { ...daily, summary: { schedule: "daily", intro: "[Chat name]: [Due count] due, [Overdue count] late, [Unknown]" } };
+  assert.match(buildDigest(reworded, one, {}, MONDAY).text, /^Marketing tasks: 1 due, 0 late, \[Unknown\]\n/);
 });
 
-test("@mentions only people with overdue tasks whose chat id is on file", () => {
+test("each person is @mentioned when their chat id is on file, else named in bold; the preview shows names", () => {
   const settings = { people: [{ email: "tim@zinspector.com", googleChatId: "111" }] };
-  const late = [task({ due: "2026-10-20" }), task({ assignee: laura, due: "2026-10-20" })];
-  assert.equal(buildDigest(weekly, late, settings, MONDAY).text, "<users/111> — you have overdue tasks");
-  assert.equal(buildDigest(weekly, [task({ due: "2026-10-30" })], settings, MONDAY).text, undefined);
+  const tasks = [task({ due: "2026-10-27" }), task({ assignee: laura, due: "2026-10-27" })];
+  const { text } = buildDigest(weekly, tasks, settings, MONDAY);
+  assert.match(text, /^<users\/111> · 1 task$/m);
+  assert.match(text, /^\*Laura E\.\* · 1 task$/m);
+  assert.match(buildDigest(weekly, tasks, settings, MONDAY, { preview: true }).text, /^@@Tim Wallace@@ · 1 task$/m);
+  const slack = { ...weekly, platform: "slack" };
+  assert.match(buildDigest(slack, tasks, { people: [{ email: "tim@zinspector.com", slackId: "U1" }] }, MONDAY).text, /^<@U1> · 1 task$/m);
 });
 
 test("stays quiet when nothing matches", () => {
@@ -111,9 +120,9 @@ test("stays quiet when nothing matches", () => {
   assert.equal(buildDigest(weekly, [task({})], {}, MONDAY), null); // no due date
 });
 
-test("Slack gets the summary as text", () => {
-  const { text } = buildDigest({ ...weekly, platform: "slack" }, [task({ due: "2026-10-27" })], {}, MONDAY);
-  assert.match(text, /^\*Week of Oct 26 — Marketing tasks\*\n1 due in the next 7 days\n\n\*Tim Wallace — 1 task\*\n• A task · due tomorrow/);
+test("titles that would break a chat link are cleaned", () => {
+  const { text } = buildDigest(weekly, [task({ id: "9", description: "A <b>|c> task", due: "2026-10-27" })], { taskUrl: "https://z/{id}" }, MONDAY);
+  assert.match(text, /<https:\/\/z\/9\|A  b  c  task>/);
 });
 
 test("without an API key, Send the summary now lists the tasks the app has seen", async () => {
@@ -125,9 +134,9 @@ test("without an API key, Send the summary now lists the tasks the app has seen"
     await hook(env, c.id, { ...created, data: { ...created.data, id: 99, description: "Second task" } });
     const res = await (await admin(env, "POST", `/api/connections/${c.id}/digest`)).json();
     assert.equal(res.ok, true);
-    const card = calls.at(-1).body.cardsV2[0].card;
-    assert.equal(card.header.subtitle, "1 with no due date");
-    assert.equal(card.sections.at(-1).widgets[0].textParagraph.text, "Last week: 2 new · 1 finished 🎉<br>Nothing overdue 👏");
+    const { text } = calls.at(-1).body;
+    assert.match(text, /^_1 with no due date_$/m);
+    assert.match(text, /Last week: 2 new · 1 finished 🎉\nNothing overdue 👏\n/);
   });
 });
 
@@ -146,7 +155,7 @@ test("the cron sends daily summaries on weekdays and weekly ones on Mondays, at 
       const pending = [];
       await worker.scheduled({ scheduledTime: Date.parse(iso) }, env, { waitUntil: (p) => pending.push(p) });
       await Promise.all(pending);
-      return calls.slice(before).map((c) => c.body.cardsV2[0].card.header.title.split(" — ")[1]);
+      return calls.slice(before).map((c) => c.body.text.match(/(morning|Monday), (\w+)!/)[2]);
     };
     assert.deepEqual(await run("2026-10-26T16:30:00Z"), []); // 9:30 Pacific
     assert.deepEqual(await run("2026-10-26T15:30:00Z"), ["D", "W"]); // Monday
@@ -183,6 +192,7 @@ async function withZinspector(fn) {
         const q = u.searchParams.get("search").toLowerCase();
         return Response.json({ results: properties.filter((p) => p.Name.toLowerCase().includes(q)), next: null });
       }
+      if (u.pathname === "/api/user/") return Response.json([{ id: 35634, FirstName: "Tim", LastName: "Wallace", email: "tim+onsight@zinspector.com" }]);
       if (u.pathname === "/api/tasks/") {
         assert.equal(u.searchParams.get("active"), "true");
         return Response.json({ results: tasks[u.searchParams.get("Property")] || [], next: null });
@@ -203,6 +213,7 @@ test("with an API key, saving looks up the properties and the summary reads thei
   const env = { ...makeEnv(), ZINSPECTOR_API_KEY: "KEY" };
   await withZinspector(async (calls) => {
     await admin(env, "GET", "/api/state"); // remembers this app's address for zInspector's whitelist
+    await admin(env, "PUT", "/api/settings", { people: [{ email: "tim@zinspector.com", googleChatId: "777" }] });
     const summary = { schedule: "daily", onlyProperties: true, propertyLines: ["Marketing.Conferences", "marketing.bizdev*", ""] };
     const c = await (await admin(env, "POST", "/api/connections", { name: "Mkt", platform: "google-chat", chatUrl: GCHAT_URL, summary })).json();
     assert.deepEqual(c.summary.properties, [
@@ -215,9 +226,8 @@ test("with an API key, saving looks up the properties and the summary reads thei
     const reads = calls.api.filter((a) => a.url.pathname === "/api/tasks/");
     assert.deepEqual(reads.map((a) => a.url.searchParams.get("Property")), ["903925", "2206214", "2962118"]);
     assert.equal(reads[0].headers.Origin, ORIGIN);
-    const card = calls.chat.at(-1).body.cardsV2[0].card;
-    assert.equal(card.sections[0].header, "Tim Wallace — 2 tasks (1 overdue)");
-    assert.match(card.sections[0].widgets[0].textParagraph.text, /Idea: a chat message.* · overdue since \w+ · In Progress<br>.*Conference: PTN.* · due \w+ · Approval Requested$/);
+    const { text } = calls.chat.at(-1).body;
+    assert.match(text, /^<users\/777> · 2 tasks, 1 overdue\n🔴 .*Idea: a chat message.* — 5 days overdue · In Progress\n🔹 .*Conference: PTN.* — due \w+ · Approval Requested$/m);
   });
 });
 
@@ -248,5 +258,22 @@ test("the property picker searches zInspector's properties by name", async () =>
     const picked = { onlyProperties: true, properties: found.map((p) => ({ label: p.name, name: p.name, ids: [p.id] })) };
     const c = await (await admin(env, "POST", "/api/connections", { name: "Mkt", platform: "google-chat", chatUrl: GCHAT_URL, summary: picked })).json();
     assert.deepEqual(c.summary.properties.map((p) => p.ids[0]), [2962118, 2206214]);
+  });
+});
+
+test("Preview the summary shows the text with the form's unsaved settings, and posts nothing", async () => {
+  const env = makeEnv();
+  const c = await (await admin(env, "POST", "/api/connections", { name: "Mkt", platform: "google-chat", chatUrl: GCHAT_URL })).json();
+  await withChat(200, async (calls) => {
+    await hook(env, c.id, created);
+    const posted = calls.length;
+    const preview = (summary) => admin(env, "POST", `/api/connections/${c.id}/digest`, { preview: true, summary }).then((r) => r.json());
+    assert.equal((await preview({})).empty, true); // the task has no due date
+    const r = await preview({ onlyDated: false, intro: "Hello [Chat name]" });
+    assert.equal(r.ok, true);
+    assert.match(r.preview, /^Hello Mkt\n/);
+    assert.equal(calls.length, posted);
+    const saved = (await (await admin(env, "GET", "/api/state")).json()).connections[0].summary;
+    assert.equal(saved.intro, ""); // previewing doesn't save
   });
 });

@@ -27,7 +27,12 @@ export async function openTasksOn(env, origin, ids, cache = new Map()) {
     if (!cache.has(id)) cache.set(id, await readAll(env, origin, "/tasks/", { active: "true", Property: id }));
     lists.push(cache.get(id));
   }
-  return [...new Map(lists.flat().map((t) => [t.id, t])).values()].map(taskFromApi);
+  // People's emails, to @mention them through the People list; without them the names show in bold.
+  if (!cache.has("users")) {
+    cache.set("users", await readAll(env, origin, "/user/", {}).catch((err) => (err instanceof ZinspectorError ? [] : Promise.reject(err))));
+  }
+  const users = new Map(cache.get("users").map((u) => [u.id, u]));
+  return [...new Map(lists.flat().map((t) => [t.id, t])).values()].map((t) => taskFromApi(t, users));
 }
 
 // Turns the lines typed in a chat's settings into properties: a number or a zInspector link becomes an id,
@@ -82,11 +87,13 @@ export async function searchProperties(env, origin, query) {
 }
 
 // A task from zInspector's API in the shape the app keeps from webhooks (see taskview.js snapshotOf).
-export function taskFromApi(t) {
+export function taskFromApi(t, users = new Map()) {
+  const person = (id, name) => (id || name ? { name: name || userName(users.get(id)) || "Someone", email: users.get(id)?.email || "" } : null);
   return {
     id: String(t.id),
     status: String(t.Status ?? ""),
-    assignee: t.AssignedToUser || t.AssignedToUserName ? { name: t.AssignedToUserName || "Someone", email: "" } : null,
+    assignee: person(t.AssignedToUser, t.AssignedToUserName),
+    nextPerson: person(t.NextToDo, t.NextToDoName),
     priority: t.Priority ?? null,
     // zInspector stores due times in UTC; the team's day is Pacific.
     due: t.EndDate ? (String(t.EndDate).length > 10 ? localDate(new Date(t.EndDate)) : t.EndDate) : null,
@@ -96,6 +103,10 @@ export function taskFromApi(t) {
     propertyName: String(t.PropertyName ?? ""),
     propertyId: t.Property ?? null,
   };
+}
+
+function userName(u) {
+  return u ? [u.FirstName, u.LastName].filter(Boolean).join(" ") : "";
 }
 
 // Every row of a list route, following its `next` links.

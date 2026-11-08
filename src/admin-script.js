@@ -257,6 +257,13 @@ function openForm(c) {
   }));
   $("f-overdueWithin").value = String(s.overdueWithin == null ? 30 : s.overdueWithin);
   $("f-onlyAssigned").checked = !!s.onlyAssigned;
+  $("f-intro").value = s.intro || state.summaryIntro[s.schedule] || state.summaryIntro.daily;
+  $("f-introDetails").replaceChildren.apply($("f-introDetails"), state.introDetails.map(function (d) {
+    return el("button", { type: "button", text: d, on: { click: function () { insertInto($("f-intro"), "[" + d + "]"); } } });
+  }));
+  $("f-summaryPreview").style.display = "none";
+  $("f-summaryPreviewMsg").textContent = "";
+  $("f-summaryPreviewRow").style.display = c ? "flex" : "none";
   showSummary();
   templates = {};
   state.events.forEach(function (e) { templates[e.key] = c && c.templates && c.templates[e.key] != null ? c.templates[e.key] : e.template; });
@@ -404,10 +411,48 @@ function findProperties() {
 $("f-propFind").addEventListener("click", findProperties);
 $("f-propSearch").addEventListener("keydown", function (ev) { if (ev.key === "Enter") { ev.preventDefault(); findProperties(); } });
 
+function insertInto(input, token) {
+  var at = input.selectionStart == null ? input.value.length : input.selectionStart;
+  input.value = input.value.slice(0, at) + token + input.value.slice(input.selectionEnd == null ? at : input.selectionEnd);
+  input.focus();
+  input.selectionStart = input.selectionEnd = at + token.length;
+}
+// The opening line as saved: empty when it's still a default, so it follows the schedule.
+function introValue() {
+  var v = $("f-intro").value.trim();
+  return Object.keys(state.summaryIntro).some(function (k) { return state.summaryIntro[k] === v; }) ? "" : v;
+}
+function summaryForm() {
+  var s = {
+    schedule: $("f-schedule").value, days: Number($("f-days").value), onlyProperties: $("f-onlyProperties").checked,
+    onlyDated: $("f-onlyDated").checked, includeOverdue: $("f-includeOverdue").checked,
+    overdueWithin: Number($("f-overdueWithin").value), onlyAssigned: $("f-onlyAssigned").checked, intro: introValue()
+  };
+  if (state.summaryReadsZinspector) s.properties = chosen;
+  else s.propertyLines = $("f-properties").value.split("\n");
+  return s;
+}
+$("f-summaryPreviewBtn").addEventListener("click", function () {
+  if (!editing) return;
+  $("f-summaryPreviewMsg").textContent = "Building…";
+  call("POST", "/api/connections/" + editing.id + "/digest", { preview: true, summary: summaryForm() }).then(function (r) {
+    var box = $("f-summaryPreview");
+    if (r.empty) { $("f-summaryPreviewMsg").textContent = "Nothing to list with these settings, so nothing would be posted."; box.style.display = "none"; return; }
+    if (!r.ok) { $("f-summaryPreviewMsg").textContent = r.detail; box.style.display = "none"; return; }
+    $("f-summaryPreviewMsg").textContent = "Not posted. This is what the chat would get now.";
+    box.innerHTML = formatChat(r.preview).replace(/@@([^@]+)@@/g, "<span class='mention'>@$1</span>");
+    box.style.display = "block";
+  }).catch(function (err) { $("f-summaryPreviewMsg").textContent = err.message; });
+});
+$("f-schedule").addEventListener("change", function () {
+  // A default opening line follows the schedule (Good morning / Happy Monday).
+  if (!introValue() && state.summaryIntro[$("f-schedule").value]) $("f-intro").value = state.summaryIntro[$("f-schedule").value];
+});
+
 function showSummary() {
   var on = $("f-schedule").value !== "off";
   $("f-overdueWithinBox").style.display = $("f-includeOverdue").checked ? "flex" : "none";
-  ["f-days", "f-onlyProperties", "f-onlyDated", "f-includeOverdue", "f-overdueWithin", "f-onlyAssigned", "f-properties"].forEach(function (id) { $(id).disabled = !on; });
+  ["f-days", "f-onlyProperties", "f-onlyDated", "f-includeOverdue", "f-overdueWithin", "f-onlyAssigned", "f-properties", "f-intro", "f-summaryPreviewBtn"].forEach(function (id) { $(id).disabled = !on; });
   $("f-propertiesBox").style.display = $("f-onlyProperties").checked ? "block" : "none";
   // With an API key, pick from zInspector's list; without one, type the names.
   $("f-picker").style.display = state.summaryReadsZinspector ? "block" : "none";
@@ -427,18 +472,11 @@ $("form").addEventListener("submit", function (ev) {
   var body = {
     name: $("f-name").value, platform: $("f-platform").value, chatUrl: $("f-chatUrl").value, token: $("f-token").value,
     only: $("f-only").value, templates: templates,
-    summary: {
-      schedule: $("f-schedule").value, days: Number($("f-days").value), onlyProperties: $("f-onlyProperties").checked,
-      onlyDated: $("f-onlyDated").checked,
-      includeOverdue: $("f-includeOverdue").checked, overdueWithin: Number($("f-overdueWithin").value),
-      onlyAssigned: $("f-onlyAssigned").checked
-    },
+    summary: summaryForm(),
     alerts: Object.fromEntries(Array.prototype.map.call($("f-alerts").querySelectorAll("input"), function (b) {
       return [b.getAttribute("data-alert"), b.checked];
     }))
   };
-  if (state.summaryReadsZinspector) body.summary.properties = chosen;
-  else body.summary.propertyLines = $("f-properties").value.split("\n");
   var req = editing ? call("PUT", "/api/connections/" + editing.id, body) : call("POST", "/api/connections", body);
   req.then(function () { $("dialog").close(); return load(); })
      .catch(function (err) { $("formMsg").textContent = err.message; });

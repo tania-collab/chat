@@ -9,7 +9,7 @@
 
 import { DEFAULT_COMPLETED, buildMessage, buildPayload, cardFor, skipReason, SKIP_REASONS, AUDIENCES, ALERTS, alertsOf, eventKind, deliveryUrl, render, fieldPaths, templateFor, EVENTS, EXAMPLES, EXAMPLE_PREVIOUS, TEST_MESSAGE } from "./messages.js";
 import { snapshotOf, EXTRA_NAMES } from "./taskview.js";
-import { buildDigest, isSummaryTime, summaryOf, SCHEDULES, SUMMARY_DAYS, OVERDUE_WITHIN } from "./digest.js";
+import { buildDigest, isSummaryTime, summaryOf, SCHEDULES, SUMMARY_DAYS, OVERDUE_WITHIN, DEFAULT_INTRO, INTRO_DETAILS } from "./digest.js";
 import { zinspectorConfigured, readsZinspector, openTasksOn, resolveProperties, searchProperties, ZinspectorError } from "./summary.js";
 import {
   getConnections,
@@ -20,6 +20,7 @@ import {
   deleteActivity,
   cleanConnection,
   cleanSettings,
+  cleanSummary,
 } from "./store.js";
 import { ADMIN_HTML } from "./admin.js";
 import { accessConfigured, accessCheck } from "./access.js";
@@ -123,7 +124,7 @@ async function sendDigests(env, now) {
 
 // Posts one chat's summary; returns {ok, status, detail}, or null when there was nothing to list. A failed
 // zInspector read is logged in the chat's history (and returned) instead of posting a partial list.
-async function sendDigest(env, connection, now = new Date(), cache = new Map()) {
+async function sendDigest(env, connection, now = new Date(), cache = new Map(), { preview = false } = {}) {
   const summary = summaryOf(connection);
   const activity = await getActivity(env.RELAY, connection.id);
   const settings = await getSettings(env.RELAY);
@@ -136,6 +137,7 @@ async function sendDigest(env, connection, now = new Date(), cache = new Map()) 
       tasks = await openTasksOn(env, settings.appOrigin, ids, cache);
     } catch (err) {
       if (!(err instanceof ZinspectorError)) throw err;
+      if (preview) return { ok: false, status: err.status, detail: err.message };
       const entry = logEntry("digest", event, { ok: false, status: err.status, body: err.message }, "app");
       await saveActivity(env.RELAY, connection.id, activity, { entry, kind: "test", event });
       return { ok: false, status: err.status, detail: entry.detail };
@@ -144,8 +146,9 @@ async function sendDigest(env, connection, now = new Date(), cache = new Map()) 
     tasks = Object.entries(activity.tasks || {}).map(([id, t]) => ({ id, ...t }));
   }
   const pulse = !fromZinspector && summary.schedule === "weekly";
-  const payload = buildDigest(connection, tasks, settings, now, { pulse });
+  const payload = buildDigest(connection, tasks, settings, now, { pulse, preview });
   if (!payload) return null;
+  if (preview) return { ok: true, preview: payload.text };
   const res = await fetch(connection.chatUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json; charset=UTF-8" },
@@ -239,6 +242,8 @@ async function api(request, env, url, user) {
       schedules: SCHEDULES,
       summaryDays: SUMMARY_DAYS,
       overdueWithin: OVERDUE_WITHIN,
+      summaryIntro: DEFAULT_INTRO,
+      introDetails: INTRO_DETAILS,
       summaryReadsZinspector: zinspectorConfigured(env),
     });
   }
@@ -311,7 +316,15 @@ async function api(request, env, url, user) {
     return json({ ok: true });
   }
   if (parts[3] === "log" && method === "GET") return json((await getActivity(kv, id)).entries);
+  // With {preview, summary} (the settings form, not saved yet): the summary's text, without posting it.
   if (parts[3] === "digest" && method === "POST") {
+    const input = await request.json().catch(() => ({}));
+    if (input.preview) {
+      const resolved = await withProperties(env, input, existing, url.origin);
+      if (resolved.error) return json({ error: resolved.error }, 400);
+      const connection = { ...existing, summary: cleanSummary(resolved.value.summary, summaryOf(existing)) };
+      return json((await sendDigest(env, connection, new Date(), new Map(), { preview: true })) || { ok: true, empty: true });
+    }
     const result = await sendDigest(env, existing);
     return json(result || { ok: true, empty: true });
   }
