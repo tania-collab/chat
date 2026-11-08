@@ -139,6 +139,19 @@ test("system accounts aren't tagged: a task waiting on Ticket Notify goes to the
   assert.doesNotMatch(text, /Only bots|Ticket Notify|Z Support/);
 });
 
+test("a due time shows for today and tomorrow, in Pacific time, and sets the day", () => {
+  const tasks = [
+    task({ id: "t1", description: "Booth call", due: "2026-10-27", dueAt: "2026-10-27T14:00:00Z" }), // 7am PDT tomorrow
+    task({ id: "t2", description: "Later", due: "2026-10-30", dueAt: "2026-10-30T19:00:00Z" }),
+    // 5pm Pacific on Oct 26 is already Oct 27 in UTC: still "today".
+    task({ id: "t3", description: "Evening", due: "2026-10-27", dueAt: "2026-10-27T00:00:00Z" }),
+  ];
+  const { text } = buildDigest(weekly, tasks, {}, MONDAY);
+  assert.match(text, /\*Booth call\* — due tomorrow at 7:00am/);
+  assert.match(text, /\*Later\* — due Fri ·/);
+  assert.match(text, /\*Evening\* — due today at 5:00pm/);
+});
+
 test("a task's pending to-do shows under it", () => {
   const t = task({ due: "2026-10-27", todo: { next: "Get attendee list", done: 5, total: 6 } });
   assert.match(buildDigest(weekly, [t], {}, MONDAY).text, /— due tomorrow · \*Tim Wallace\*\n      ➡️ Next: Get attendee list _\(5 of 6 done\)_$/m);
@@ -176,7 +189,7 @@ test("the weekly summary: tasks by urgency, each tagging the people on it, with 
   assert.ok(DEFAULT_INTRO.weekly.map((l) => l.replace("[Chat name]", "Marketing tasks").replace("[Week]", "Oct 26")).includes(intro));
   assert.deepEqual(rest.slice(0, 3), [
     "_1 past due · 2 coming up_",
-    "*Past due*\n" +
+    "*Past due* · already done? Close it in zInspector so it drops off.\n" +
       "🔴 <https://z/task/1|webchatTEST> — 3 days overdue · <users/111> (next: *Laura E.*) · In Progress",
     "*Coming up* (next 7 days)\n" +
       "🟠 <https://z/task/3|Email Campaigns> — due tomorrow · *Laura E.*\n" +
@@ -298,7 +311,9 @@ async function withZinspector(fn) {
       if (u.pathname === "/api/task/todos/") {
         if (u.searchParams.get("Task") !== "1814733") return Response.json({ results: [], next: null });
         return Response.json({ results: [
-          { id: 1, Task: 1814733, Description: "Send pre-conference email", Completed: true, Order: 0 },
+          { id: 0, Task: 1814733, Description: "Documents", Completed: true, Order: 9, Type: "DOCUMENT" },
+          { id: 3, Task: 1814733, Description: "20-minute sessions", Completed: true, Order: 0, Type: "NOTE" },
+          { id: 1, Task: 1814733, Description: "Send pre-conference email", Completed: true, Order: 0, Type: "BOOLEAN" },
           { id: 2, Task: 1814733, Description: "Get attendee list", Completed: false, Order: 1 },
         ], next: null });
       }
