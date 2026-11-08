@@ -42,8 +42,22 @@ Messages about one task share a Google Chat thread. To tell what changed, the ap
 the 300 most recently seen tasks per chat. Messages still on an earlier default switch to the current one;
 edited messages stay as written.
 
-**Summary** (per chat, in its Settings): a card listing the open tasks coming due, per person, overdue first, with
-each task's due day and status. Each chat chooses:
+**Summary** (per chat, in its Settings): a message listing the open tasks coming due, one section per person, each
+person @mentioned (when their chat id is on file under People), overdue first:
+
+```
+☀️ Good morning, zMarketing! Here's what's coming up (Mon, Nov 9)
+4 due in the next 7 days · 2 overdue
+
+@Tim Wallace · 3 tasks, 1 overdue
+🔴 Idea: a chat message when a task is assigned… — 4 days overdue · In Progress · next: @Laura
+🟠 Booth logistics – PMSC 2027 — due tomorrow
+🔹 Sponsor sessions follow-up — due Thu
+
+Open zInspector
+```
+
+It's a message rather than a card because chat cards can't @mention anyone. Each chat chooses:
 
 - **Post it**: off, daily (weekday mornings) or weekly (Monday mornings), at 8:30am Pacific.
 - **Tasks due within**: tomorrow, or the next 3, 7, 14 or 30 days.
@@ -53,8 +67,10 @@ each task's due day and status. Each chat chooses:
 - **Only tasks with a due date**, **Only tasks with someone assigned**, and **Include overdue tasks**, overdue in the
   last 7, 30 (default) or 90 days or any time, so tasks forgotten long ago don't fill the list.
 
-Nothing is posted when nothing matches. People with overdue tasks are @mentioned when their chat id is on file.
-**Send the summary now** on a chat's card posts it right away. With a zInspector API key (below) and chosen
+- **Opening line**: editable, with [Chat name], [Day], [Week], [Days], [Due count] and [Overdue count].
+
+Nothing is posted when nothing matches. **Preview the summary** in the settings shows what the chat would get,
+without posting or saving. **Send the summary now** on a chat's card posts it right away. With a zInspector API key (below) and chosen
 properties, the summary reads every open task on those properties from zInspector when it's sent. Without them, it
 lists the tasks zInspector has sent the chat since it was connected. The schedule is the `[triggers]` cron in
 `wrangler.toml`.

@@ -86,7 +86,7 @@ export function cleanConnection(input, existing = {}, by = null) {
 }
 
 // The summary's settings; `properties` arrive already looked up (worker.js, summary.js resolveProperties).
-function cleanSummary(input, current) {
+export function cleanSummary(input, current) {
   if (!input || typeof input !== "object") return current;
   const flag = (k) => (typeof input[k] === "boolean" ? input[k] : current[k]);
   const properties = Array.isArray(input.properties)
@@ -105,6 +105,7 @@ function cleanSummary(input, current) {
     includeOverdue: flag("includeOverdue"),
     overdueWithin: OVERDUE_WITHIN.includes(Number(input.overdueWithin)) ? Number(input.overdueWithin) : current.overdueWithin,
     onlyAssigned: flag("onlyAssigned"),
+    intro: typeof input.intro === "string" ? input.intro.trim().slice(0, 300) : current.intro,
   };
 }
 

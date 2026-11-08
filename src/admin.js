@@ -177,6 +177,14 @@ export const ADMIN_HTML = String.raw`<!doctype html>
       <span class="hint">so tasks forgotten long ago stay out</span>
     </div>
     <div class="hint" id="f-summarySource"></div>
+    <label for="f-intro">Opening line <span class="hint">click a detail to add it; the people and their tasks follow, each person @mentioned</span></label>
+    <input type="text" id="f-intro">
+    <div class="details" id="f-introDetails"></div>
+    <div class="row" style="margin-top:8px" id="f-summaryPreviewRow">
+      <button type="button" id="f-summaryPreviewBtn">Preview the summary</button>
+      <span class="hint" id="f-summaryPreviewMsg"></span>
+    </div>
+    <div class="preview" id="f-summaryPreview" style="display:none; white-space:pre-wrap; margin-top:8px"></div>
     <h2 style="margin:24px 0 4px">Wording</h2>
     <div class="hint">Click a detail to add it. A detail with no value (no due date, say) is left out on its own. Formatting: *bold*, _italic_.</div>
     <label for="f-event">Message for</label>

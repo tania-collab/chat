@@ -1,4 +1,4 @@
-// The summary: one card per chat, daily (weekday mornings) or weekly (Monday morning), listing the open tasks
+// The summary: one message per chat, daily (weekday mornings) or weekly (Monday morning), listing the open tasks
 // due in the coming days per person, overdue first. Each chat picks what it lists (summaryOf). The tasks come
 // from zInspector (summary.js reads them) or, without an API key, from the tasks the app has seen.
 
@@ -6,7 +6,7 @@ import { DEFAULT_COMPLETED, mentionFor, taskUrl } from "./messages.js";
 import { TIME_ZONE, localDate } from "./time.js";
 export const SUMMARY_HOUR = 8;
 const DASHBOARD = "https://dashboard.zinspector.com/";
-const TASKS_PER_PERSON = 8;
+const TASKS_PER_PERSON = 10;
 const NOT_OPEN = ["canceled", "deferred"]; // finished in zInspector without being done
 const DAY_MS = 24 * 60 * 60 * 1000;
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -30,6 +30,7 @@ export const SUMMARY_DEFAULTS = {
   includeOverdue: true,
   overdueWithin: 30,
   onlyAssigned: true,
+  intro: "", // the opening line; empty = DEFAULT_INTRO for the schedule
 };
 
 // A chat's summary settings. Chats from before the summary had the weekly digest on unless turned off.
@@ -79,86 +80,78 @@ export function selectTasks(tasks, summary, settings = {}, now = new Date()) {
     });
 }
 
-// {text?, cardsV2} for Google Chat or {text} for Slack; null when there's nothing to list.
-// `tasks` are task snapshots with their id; `pulse` adds last week's new / finished counts (weekly, seen tasks).
-export function buildDigest(connection, tasks, settings = {}, now = new Date(), { pulse = false } = {}) {
+// The summary as one chat message (text, so people can be @mentioned: chat cards can't), or null when there's
+// nothing to list. `tasks` are task snapshots with their id; `pulse` adds last week's new / finished counts
+// (weekly, seen tasks).
+export function buildDigest(connection, tasks, settings = {}, now = new Date(), { pulse = false, preview = false } = {}) {
   const summary = summaryOf(connection);
   const today = localDate(now);
   const open = selectTasks(tasks, summary, settings, now);
   const weekAgo = now.getTime() - 7 * DAY_MS;
   const created = pulse ? tasks.filter((t) => t.createdAt && Date.parse(t.createdAt) >= weekAgo).length : 0;
   const finished = pulse ? tasks.filter((t) => t.finishedAt && Date.parse(t.finishedAt) >= weekAgo).length : 0;
-  if (!open.length && !created && !finished) return null;
+  if (!open.length) return null;
 
-  const people = groupByPerson(open);
+  // The preview shows who is @mentioned by name (a chat id means nothing on the settings page).
+  const tag = (person) => {
+    const m = mentionFor(person, settings.people, connection.platform) || "*Unassigned*";
+    return preview && m.startsWith("<") ? `@@${person.name}@@` : m;
+  };
   const overdue = open.filter((t) => t.overdue).length;
   const coming = open.filter((t) => t.dueDate && !t.overdue).length;
-  const weekly = summary.schedule === "weekly";
-  const digest = {
-    header: `${weekly ? `Week of ${formatDay(mondayOf(today), false)}` : longDay(today)} — ${connection.name}`,
-    subtitle: [
-      coming && `${coming} due ${summary.days === 1 ? "by tomorrow" : `in the next ${summary.days} days`}`,
-      overdue && `${overdue} overdue`,
-      open.length - coming - overdue && `${open.length - coming - overdue} with no due date`,
-    ]
-      .filter(Boolean)
-      .join(" · "),
-    people: people.map((p) => ({
-      heading: `${p.name} — ${p.tasks.length} ${p.tasks.length === 1 ? "task" : "tasks"}${p.overdue ? ` (${p.overdue} overdue)` : ""}`,
-      lines: p.tasks.slice(0, TASKS_PER_PERSON).map((t) => ({ title: titleOf(t), link: taskUrl(t.id, settings.taskUrl), note: noteOf(t) })),
-      more: Math.max(0, p.tasks.length - TASKS_PER_PERSON),
-    })),
-    pulse: [
-      pulse ? `Last week: ${created} new · ${finished} finished${finished ? " 🎉" : ""}` : "",
-      open.length && !overdue && summary.includeOverdue ? "Nothing overdue 👏" : "",
-    ]
-      .filter(Boolean)
-      .join("<br>"),
+  const undated = open.length - coming - overdue;
+  const values = {
+    "Chat name": connection.name,
+    Day: longDay(today),
+    Week: formatDay(mondayOf(today), false),
+    Days: String(summary.days),
+    "Due count": String(coming),
+    "Overdue count": String(overdue),
   };
+  const intro = fill(summary.intro || DEFAULT_INTRO[summary.schedule] || DEFAULT_INTRO.daily, values);
+  const counts = [
+    coming && `${coming} due ${summary.days === 1 ? "by tomorrow" : `in the next ${summary.days} days`}`,
+    overdue && `${overdue} overdue`,
+    undated && `${undated} with no due date`,
+  ].filter(Boolean);
 
-  // @mention only the people with something overdue, and only those whose chat id is on file.
-  const mentions = people
-    .filter((p) => p.overdue && p.person?.email)
-    .map((p) => mentionFor(p.person, settings.people, connection.platform))
-    .filter((m) => m?.startsWith("<"));
-  const nudge = mentions.length ? `${mentions.join(" ")} — you have overdue tasks` : "";
-
-  if (connection.platform === "google-chat") {
-    return nudge ? { text: nudge, cardsV2: [digestCard(digest)] } : { cardsV2: [digestCard(digest)] };
-  }
-  return { text: [nudge, digestText(digest)].filter(Boolean).join("\n") };
+  const sections = groupByPerson(open).map((p) => {
+    const lines = p.tasks.slice(0, TASKS_PER_PERSON).map((t) => taskLine(t, taskUrl(t.id, settings.taskUrl), tag));
+    if (p.tasks.length > TASKS_PER_PERSON) lines.push(`   _and ${p.tasks.length - TASKS_PER_PERSON} more_`);
+    const size = `${p.tasks.length} ${p.tasks.length === 1 ? "task" : "tasks"}${p.overdue ? `, ${p.overdue} overdue` : ""}`;
+    return [`${p.person ? tag(p.person) : `*${p.name}*`} · ${size}`, ...lines].join("\n");
+  });
+  const footer = [
+    pulse ? `Last week: ${created} new · ${finished} finished${finished ? " 🎉" : ""}` : "",
+    open.length && !overdue && summary.includeOverdue ? "Nothing overdue 👏" : "",
+    `<${DASHBOARD}|Open zInspector>`,
+  ].filter(Boolean);
+  const text = [intro, counts.length ? `_${counts.join(" · ")}_` : "", ...sections, footer.join("\n")]
+    .filter(Boolean)
+    .join("\n\n");
+  return { text };
 }
 
-function digestCard(d) {
-  const sections = d.people.map((p) => ({
-    header: escapeHtml(p.heading),
-    widgets: [{ textParagraph: { text: p.lines.map(lineHtml).concat(p.more ? [`and ${p.more} more`] : []).join("<br>") } }],
-  }));
-  const last = [{ buttonList: { buttons: [{ text: "Open zInspector", onClick: { openLink: { url: DASHBOARD } } }] } }];
-  if (d.pulse) last.unshift({ textParagraph: { text: d.pulse.split("<br>").map(escapeHtml).join("<br>") } });
-  sections.push({ widgets: last });
-  const header = d.subtitle ? { title: d.header, subtitle: d.subtitle } : { title: d.header };
-  return { cardId: "digest", card: { header, sections } };
+// The summary's opening line; [Chat name], [Day], [Week], [Days], [Due count] and [Overdue count] are filled in.
+export const DEFAULT_INTRO = {
+  daily: "☀️ *Good morning, [Chat name]!* Here's what's coming up ([Day])",
+  weekly: "👋 *Happy Monday, [Chat name]!* Here's the week of [Week]",
+};
+export const INTRO_DETAILS = ["Chat name", "Day", "Week", "Days", "Due count", "Overdue count"];
+
+function fill(template, values) {
+  return String(template).replace(/\[([^\]]+)\]/g, (m, k) => (Object.hasOwn(values, k) ? values[k] : m));
 }
 
-function digestText(d) {
-  const people = d.people.flatMap((p) => [
-    `*${p.heading}*`,
-    ...p.lines.map((l) => `• ${l.link ? `<${l.link}|${l.title}>` : l.title}${l.note ? ` · ${l.note}` : ""}`),
-    ...(p.more ? [`and ${p.more} more`] : []),
-  ]);
-  const pulse = d.pulse ? d.pulse.split("<br>") : [];
-  return [`*${d.header}*`, d.subtitle, "", ...people, "", ...pulse, `<${DASHBOARD}|Open zInspector>`].filter((l, i) => l || i > 1).join("\n");
-}
-
-function lineHtml(l) {
-  const title = l.link ? `<a href="${escapeHtml(l.link)}">${escapeHtml(l.title)}</a>` : escapeHtml(l.title);
-  return `• ${title}${l.note ? ` · ${escapeHtml(l.note)}` : ""}`;
-}
-
-// "due Wed · In Progress": when, and the status once the task has moved past New.
-function noteOf(t) {
-  return [t.note, t.status && !/^new$/i.test(t.status) ? t.status : ""].filter(Boolean).join(" · ");
+// "🔴 <link|Title> — 3 days overdue · In Progress · next: @Laura": a colored dot for how soon, the title linked,
+// when, the status once past New, and who has the next to-do when that's someone else.
+function taskLine(t, link, tag) {
+  const title = titleOf(t).replace(/[<>|]/g, " ");
+  const dot = t.overdue ? "🔴" : t.daysLeft != null && t.daysLeft <= 1 ? "🟠" : t.dueDate ? "🔹" : "▫️";
+  const nextPerson = t.nextPerson || (t.next ? { name: t.next } : null);
+  const nextIsOther = nextPerson?.name && nextPerson.name !== t.assignee?.name;
+  const extra = [t.status && !/^new$/i.test(t.status) ? t.status : "", nextIsOther && t.assignee ? `next: ${tag(nextPerson)}` : ""];
+  return [`${dot} ${link ? `<${link}|${title}>` : `*${title}*`}`, [t.note, ...extra].filter(Boolean).join(" · ")].filter(Boolean).join(" — ");
 }
 
 // People with the most overdue, then the most tasks, first; each person's tasks overdue first, then by due
@@ -186,7 +179,7 @@ function dueInfo(due, today) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) return { dueDate: "", overdue: false, daysLeft: null, note: "" };
   const days = Math.round((Date.parse(dueDate) - Date.parse(today)) / DAY_MS);
   const base = { dueDate, overdue: days < 0, daysLeft: days };
-  if (days < 0) return { ...base, note: `overdue since ${formatDay(dueDate, days >= -6)}` };
+  if (days < 0) return { ...base, note: days === -1 ? "overdue since yesterday" : `${-days} days overdue` };
   if (days === 0) return { ...base, note: "due today" };
   if (days === 1) return { ...base, note: "due tomorrow" };
   return { ...base, note: `due ${formatDay(dueDate, days <= 6)}` };
@@ -215,6 +208,3 @@ function titleOf(t) {
   return (first.length > 70 ? first.slice(0, 69) + "…" : first) || t.type || "Task";
 }
 
-function escapeHtml(s) {
-  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
