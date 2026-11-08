@@ -80,7 +80,7 @@ Messages still on an earlier default switch to the current one; edited messages 
 - **Settings** per chat: which tasks, what to post, and the **wording**, edited with detail buttons ([Person],
   [From], [Task title]…) and a live preview of the card.
 - **History** in plain words: what was posted, for which task and person, or why not.
-- **Send a test message** / **Send this week's digest**, and settings for all chats: the task link, the
+- **Send a test message** / **Send the summary now**, and settings for all chats: the task link, the
   "finished" statuses and people's chat ids for real @mentions.
 
 ### Message templates
