@@ -98,8 +98,10 @@ export async function todosOf(env, origin, taskId) {
         text: String(field(r, ["description", "Description", "Name", "name", "Title", "title"]) || "").trim(),
         done: Boolean(field(r, ["completed", "Completed", "IsCompleted", "isCompleted", "IsDone", "Done"])),
         order: Number(field(r, ["sort_order", "SortOrder", "Order", "order"]) ?? 0),
+        kind: String(field(r, ["type", "Type", "TodoType", "todo_type", "ItemType"]) ?? "").toUpperCase(),
       }))
-      .filter((s) => s.text)
+      // Only real steps: a Documents slot or a note isn't something to do.
+      .filter((s) => s.text && !["DOCUMENT", "NOTE"].includes(s.kind))
       .sort((a, b) => a.order - b.order);
     const next = steps.find((s) => !s.done);
     return next ? { next: next.text.slice(0, 120), done: steps.filter((s) => s.done).length, total: steps.length } : null;
@@ -121,6 +123,7 @@ export function taskFromApi(t, users = new Map()) {
     priority: t.Priority ?? null,
     // zInspector stores due times in UTC; the team's day is Pacific.
     due: t.EndDate ? (String(t.EndDate).length > 10 ? localDate(new Date(t.EndDate)) : t.EndDate) : null,
+    dueAt: String(t.EndDate || "").length > 10 ? t.EndDate : null,
     type: String(t.Action ?? ""),
     description: String(t.Description ?? "").slice(0, 500),
     next: String(t.NextToDoName ?? ""),

@@ -50,12 +50,12 @@ the people on it (@mentioned when their chat id is on file under People):
 Good morning, zMarketing. Here's where things stand.
 1 past due · 2 coming up · 8 quiet
 
-Past due
+Past due · already done? Close it in zInspector so it drops off.
 🔴 PTN 2026 RPM Franchise Conference — 13 days overdue · @Laura (next to-do) · Approval Requested
       ➡️ Next: Get attendee list (5 of 6 done)
 
 Coming up (next 7 days)
-🟠 Booth logistics – PMSC 2027 — due tomorrow · @Tim
+🟠 NARPM Broker Owner floorplan – meet 11-12 to pick booth — due tomorrow at 7:00am · @Athina (next to-do)
 🔹 Sponsor sessions follow-up — due Thu · @Tim (next: @Athina)
 
 No activity for 14+ days
@@ -90,8 +90,9 @@ It's a message rather than a card because chat cards can't @mention anyone. Each
 - **Opening line**: editable, with [Chat name], [Day], [Week], [Days], [Due count] and [Overdue count].
 
 With the API key, dated tasks also show their pending to-do ("➡️ Next: Get attendee list (5 of 6 done)"), read
-from `/api/task/todos/` for up to 10 tasks; if zInspector doesn't share to-dos with the key, the line is left out.
-zInspector's system accounts (Ticket Notify, Z Support) are never tagged.
+from `/api/task/todos/` for up to 10 tasks and counting only real steps (not Documents slots or notes); if zInspector doesn't share to-dos with the key, the line is left out.
+Tasks due today or tomorrow show the time ("due tomorrow at 7:00am", Pacific). zInspector's system accounts (Ticket
+Notify, Z Support) are never tagged.
 
 Nothing is posted when nothing matches. **Preview the summary** in the settings shows what the chat would get the
 next time it goes out, without posting or saving. **Send the summary now** on a chat's card posts it right away. With a zInspector API key (below) and chosen

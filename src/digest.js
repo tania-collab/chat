@@ -8,7 +8,8 @@ const TASKS_PER_SECTION = 10;
 const QUIET_SHOWN = 8;
 // Plain headings: the tasks under them carry the message.
 const SECTIONS = {
-  overdue: () => "*Past due*",
+  // Often the work is done and only the task is still open.
+  overdue: () => "*Past due* · already done? Close it in zInspector so it drops off.",
   coming: (s) => `*Coming up* (next ${s.days === 1 ? "day" : `${s.days} days`})`,
   undated: () => "*No due date*",
   quiet: (s) => `*No activity for ${s.quietDays}+ days*`,
@@ -119,7 +120,7 @@ function followed(tasks, summary, settings, now) {
     .filter((t) => !summary.onlyProperties || onProperties(t, summary.properties))
     .map((t) => ({ ...t, owner: ownerOf(t, summary.owners) }))
     .filter((t) => t.owner)
-    .map((t) => ({ ...t, ...dueInfo(t.due, today) }));
+    .map((t) => ({ ...t, ...dueInfo(t.due, today, t.dueAt || (String(t.due || "").length > 10 ? t.due : null)) }));
 }
 
 // Followed tasks with no activity for the chat's quietDays or more, oldest first: the closest thing to a missed
@@ -318,15 +319,26 @@ function quietFor(days) {
   return `${Math.floor(days / 30)} months`;
 }
 
-function dueInfo(due, today) {
-  const dueDate = String(due || "").slice(0, 10);
+function dueInfo(due, today, at = null) {
+  // A due time (ISO, UTC) gives the day in Pacific time, and the hour for today and tomorrow.
+  const local = at && !Number.isNaN(Date.parse(at)) ? new Date(at) : null;
+  const dueDate = local ? localDate(local) : String(due || "").slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) return { dueDate: "", overdue: false, daysLeft: null, note: "" };
   const days = Math.round((Date.parse(dueDate) - Date.parse(today)) / DAY_MS);
   const base = { dueDate, overdue: days < 0, daysLeft: days };
   if (days < 0) return { ...base, note: days === -1 ? "1 day overdue" : `${-days} days overdue` };
-  if (days === 0) return { ...base, note: "due today" };
-  if (days === 1) return { ...base, note: "due tomorrow" };
+  const time = local ? ` at ${timeLabel(local)}` : "";
+  if (days === 0) return { ...base, note: `due today${time}` };
+  if (days === 1) return { ...base, note: `due tomorrow${time}` };
   return { ...base, note: `due ${formatDay(dueDate, days <= 6)}` };
+}
+
+// "7:00am", "12:30pm", Pacific time.
+function timeLabel(date) {
+  return new Intl.DateTimeFormat("en-US", { timeZone: TIME_ZONE, hour: "numeric", minute: "2-digit", hour12: true })
+    .format(date)
+    .replace(" ", "")
+    .toLowerCase();
 }
 
 // "Fri" when it's within the week, else "Oct 26".
