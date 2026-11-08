@@ -70,6 +70,9 @@ export const ADMIN_HTML = String.raw`<!doctype html>
   dialog::backdrop { background: rgba(0,0,0,.4); }
   ol.steps { padding-left: 20px; margin: 0; } ol.steps li { margin-bottom: 6px; }
   textarea#f-template { min-height: 120px; font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .route { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+  .route-icon { width: 20px; text-align: center; }
+  a.btn { text-decoration: none; display: inline-block; }
   .details { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
   .details button { font-size: 13px; padding: 2px 10px; border-radius: 999px; background: var(--chip); }
   .health { margin-top: 10px; font-size: 14px; }
