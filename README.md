@@ -43,32 +43,35 @@ Messages about one task share a Google Chat thread. To tell what changed, the ap
 the 300 most recently seen tasks per chat. Messages still on an earlier default switch to the current one;
 edited messages stay as written.
 
-**Summary** (per chat, in its Settings): a friendly message listing the open tasks by urgency, each task tagging
-the people on it (@mentioned when their chat id is on file under People), and ending with a question to reply to:
+**Summary** (per chat, in its Settings): a plain, short message listing the open tasks by urgency, each task tagging
+the people on it (@mentioned when their chat id is on file under People):
 
 ```
-☕ Morning, zMarketing! Curious what today holds? Here's where things stand 👇
-2 coming up in the next 7 days · 1 past due · 1 gone quiet
+Good morning, zMarketing. Here's where things stand.
+1 past due · 2 coming up · 8 quiet
 
-🔴 Past due. What's one small step that would move each of these forward?
-🔴 PTN 2026 RPM Franchise Conference — 11 days past due · @Laura, your move · Approval Requested
+Past due
+🔴 PTN 2026 RPM Franchise Conference — 13 days overdue · @Laura (next to-do) · Approval Requested
+      ➡️ Next: Get attendee list (5 of 6 done)
 
-🗓️ Coming up. Here's what's next on the calendar:
+Coming up (next 7 days)
 🟠 Booth logistics – PMSC 2027 — due tomorrow · @Tim
-🔹 Sponsor sessions follow-up — due Thu · @Tim, with @Athina up next
+🔹 Sponsor sessions follow-up — due Thu · @Tim (next: @Athina)
 
-💤 Gone quiet. Still on your radar?
-💤 Follow up on Keyrenter offices ready to sign up! — untouched for 4 months · @Tim · In Progress
+No activity for 14+ days
+💤 Partnership w ApartmentAdvisor — quiet 9 days · @AJ (manager)
 
-🎉 Already wrapped something up? Share it here. Wins are contagious.
+Plus 74 older tasks with no activity for over 3 months. Worth a clean-up? Review in zInspector
+
+Anything stuck, or already done? Reply in this thread.
 Open zInspector →
 ```
 
-The suggested opening and closing lines change from day to day so it never reads the same. It's a message rather than a card because chat cards can't @mention anyone. Each chat chooses:
+It's a message rather than a card because chat cards can't @mention anyone. Each chat chooses:
 
 - **Post it on**: any days of the week (shortcuts: Weekdays, Mondays only, Every day, Off), **at** any hour from
-  6:30am to 6:30pm Pacific. The chat's card shows it ("Summary: Weekdays at 8:30am"). Mondays open with a
-  start-of-the-week line; afternoon summaries with an afternoon one.
+  6:30am to 6:30pm Pacific. The chat's card shows it ("Summary: Weekdays at 8:30am"). The suggested opening
+  line says good morning, hi (afternoons) or happy Monday.
 - **Coming up**: tasks due within the next 1 to 60 days (shortcuts: 3, 5, 7, 10, 15).
 - **Only these properties**: with a zInspector API key, search zInspector's properties by name and tick the ones to
   include. Without a key, type them one per line as zInspector names them (`Marketing.Conferences`), ending with `*`
@@ -77,12 +80,12 @@ The suggested opening and closing lines change from day to day so it never reads
   time, so tasks forgotten long ago don't fill the list.
 - **Going quiet**: also list open tasks nobody has touched for 7, 14 (default), 30 or 60 days, due date or not, most
   recently quiet first. On tasks without due dates, silence is how a missed deadline shows. Tasks quiet for longer
-  than 1, 3 (default) or 6 months are only counted ("📦 79 more have been untouched for 3 months+. Time for a
+  than 1, 3 (default) or 6 months are only counted ("Plus 74 older tasks with no activity for over 3 months. Worth a
   clean-up?"), since a weekly nudge helps with what just slipped, not with what was dropped long ago.
   From webhooks it counts from the task's last event the chat received; from zInspector, its last change.
 - **Whose tasks**: assigned only; assigned or the next to-do (default); or assigned, next to-do or the manager. Each
-  task tags its assignee (and the next to-do person, "with @Laura up next"); without an assignee it tags the next
-  to-do ("your move") or the manager ("you're steering this one").
+  task tags its assignee (and the next to-do person, "@Tim (next: @Laura)"); without an assignee it tags the next
+  to-do person ("@Laura (next to-do)") or the manager ("@Athina (manager)").
 
 - **Opening line**: editable, with [Chat name], [Day], [Week], [Days], [Due count] and [Overdue count].
 
