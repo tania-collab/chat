@@ -1,5 +1,9 @@
 // In-memory stand-ins for Cloudflare KV and the chat webhook.
-import worker from "../src/worker.js";
+import worker, { timing } from "../src/worker.js";
+
+// Tests don't wait out the pauses between chat messages and retries; they record them.
+export const waits = [];
+timing.sleep = async (ms) => { waits.push(ms); };
 
 export const ORIGIN = "https://relay.example";
 export const PASSWORD = "pw-123";

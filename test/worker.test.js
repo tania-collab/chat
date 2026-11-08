@@ -303,3 +303,23 @@ test("each chat shows its health: last message, and whether Google Chat and zIns
   const log = await (await admin(env, "GET", `/api/connections/${c.id}/log`)).json();
   assert.deepEqual([log[0].title, log[0].person, log[1].source], ["test task", "Tania Aquirre", "app"]);
 });
+
+test("when the chat says too many messages (429), the app waits and retries, then explains if it still refuses", async () => {
+  const { makeEnv: env_, admin: admin_, hook: hook_, created: created_, GCHAT_URL: url_, waits } = await import("./helpers.js");
+  const env = env_();
+  const c = await (await admin_(env, "POST", "/api/connections", { name: "Ops", platform: "google-chat", chatUrl: url_ })).json();
+  const real = globalThis.fetch;
+  try {
+    let n = 0;
+    globalThis.fetch = async () => (++n < 3 ? new Response("{\"error\":{\"code\":429}}", { status: 429 }) : new Response("{}", { status: 200 }));
+    waits.length = 0;
+    assert.equal((await hook_(env, c.id, created_)).status, 200);
+    assert.deepEqual(waits, [2000, 5000]);
+    globalThis.fetch = async () => new Response("{}", { status: 429 });
+    const res = await hook_(env, c.id, { ...created_, data: { ...created_.data, id: 7 } });
+    assert.equal(res.status, 502);
+    assert.match(await res.text(), /too many messages at once and asked to slow down/);
+  } finally {
+    globalThis.fetch = real;
+  }
+});
