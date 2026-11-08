@@ -229,14 +229,24 @@ export function buildDigest(connection, tasks, settings = {}, now = new Date(), 
     rotate(weekly ? CLOSERS.weekly : CLOSERS.daily, today),
   ].filter(Boolean);
 
-  // Google Chat: the greeting and who's needed for what (cards can't @mention), then a card per section.
+  // Google Chat: several messages in a row. A card can't @mention and a message's text comes before its card, so
+  // past due and coming up each get their card, then a short message tagging the people on those tasks with what
+  // to do. No due date, quiet and the closing card follow together, untagged.
   if (connection.platform === "google-chat" && format !== "text") {
-    const needed = actionLines(parts, tag, settings);
     const areas = new Set(parts.flatMap((p) => p.shown).map((t) => t.propertyName || ""));
-    return {
-      text: [intro, needed].filter(Boolean).join("\n"),
-      cardsV2: digestCards({ parts, extras, notes, summary, showArea: areas.size > 1 }, settings),
-    };
+    const cards = digestCards({ parts, extras, notes, summary, showArea: areas.size > 1 }, settings);
+    const messages = [];
+    const rest = [];
+    cards.forEach((card, i) => {
+      const part = parts[i];
+      if (!part || !TAG_HINT[part.kind]) return rest.push(card);
+      messages.push({ cardsV2: [card] });
+      const people = [...new Map(part.shown.map((t) => nextStepPerson(t)).filter(Boolean).map((p) => [p.name, p])).values()];
+      if (people.length) messages.push({ text: `👆 ${people.map(tag).join(" · ")}: ${TAG_HINT[part.kind]}` });
+    });
+    if (rest.length) messages.push({ cardsV2: rest });
+    messages[0] = { text: intro, ...messages[0] };
+    return { messages };
   }
 
   const sections = parts.map((p) => [p.heading, ...p.shown.map(line), p.more].filter(Boolean).join("\n")).concat(extras);
@@ -253,28 +263,20 @@ function peopleToTag(t) {
   return [t.owner?.person, next].filter((p, i, all) => p?.name && all.findIndex((q) => q?.name === p.name) === i);
 }
 
-// One line per past-due or coming-up task, tagging whoever has the next step and saying what it is:
-// "🔴 @Laura E. → *Get attendee list* · PTN 2026 RPM Franchise Conference (12 days overdue)". The step is the
-// task's next to-do; without one, close or re-date it (past due) or check it's on track (coming up).
-function actionLines(parts, tag, settings) {
-  return parts
-    .filter((p) => p.kind === "overdue" || p.kind === "coming")
-    .flatMap((p) =>
-      p.shown.map((t) => {
-        const next = realPerson(t.nextPerson || (t.next ? { name: t.next } : null));
-        const who = next || t.owner?.person;
-        const action = t.todo?.next || (t.overdue ? "Close it or set a new date" : `On track for ${t.note.replace(/^due /, "")}?`);
-        const title = titleOf(t, 60).replace(/\s*\|\s*/g, " – ").replace(/[<>|*]/g, " ").replace(/\s+/g, " ").trim();
-        const link = taskUrl(t.id, settings.taskUrl);
-        return `${t.overdue ? "🔴" : "🗓️"} ${who ? `${tag(who)} → ` : ""}*${action.replace(/[*<>|]/g, " ").trim()}* · ${link ? `<${link}|${title}>` : title} (${t.note})`;
-      }),
-    )
-    .join("\n");
+// Whoever has a task's next step: the next to-do person, else its owner.
+function nextStepPerson(t) {
+  return realPerson(t.nextPerson || (t.next ? { name: t.next } : null)) || t.owner?.person || null;
 }
+
+// What the tag line under a card asks of the people on those tasks.
+const TAG_HINT = {
+  overdue: "already done? Close it in zInspector so it drops off. Still on it? Set a new date.",
+  coming: "still on track? If plans changed, update the due date.",
+};
 
 const COLOR = { overdue: "#d93025", highest: "#d93025", high: "#e8710a", soon: "#e37400", later: "#5f6368", quiet: "#5f6368", none: "#5f6368" };
 const CARD_HEAD = {
-  overdue: (p) => ({ title: `🔴 Past due · ${p.total}`, subtitle: "Already done? Close it in zInspector so it drops off." }),
+  overdue: (p) => ({ title: `🔴 Past due · ${p.total}`, subtitle: "Due date passed, task still open" }),
   coming: (p, s) => ({ title: `🗓️ Coming up · ${p.total}`, subtitle: `Due in the next ${s.days === 1 ? "day" : `${s.days} days`}` }),
   undated: (p) => ({ title: `📅 No due date · ${p.total} new`, subtitle: "Created this week. When should they be done?" }),
   quiet: (p, s) => ({ title: `💤 Quiet · ${p.total}`, subtitle: `No activity for ${s.quietDays}+ days. Still on your radar?` }),

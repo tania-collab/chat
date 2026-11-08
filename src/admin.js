@@ -70,6 +70,7 @@ export const ADMIN_HTML = String.raw`<!doctype html>
   dialog::backdrop { background: rgba(0,0,0,.4); }
   ol.steps { padding-left: 20px; margin: 0; } ol.steps li { margin-bottom: 6px; }
   textarea#f-template { min-height: 120px; font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .gmsg { margin-top: 8px; }
   .gcard { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; margin-top: 8px; white-space: normal; }
   .gcard-title { font-weight: 600; }
   .gcard-sub, .gcard-head { color: var(--muted); font-size: 13px; }

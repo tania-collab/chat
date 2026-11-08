@@ -486,7 +486,10 @@ $("f-summaryPreviewBtn").addEventListener("click", function () {
     if (!r.ok) { $("f-summaryPreviewMsg").textContent = r.detail; box.style.display = "none"; return; }
     $("f-summaryPreviewMsg").textContent = "Not posted. This is what the chat would get on " + r.at + ".";
     // The card's HTML comes from the server, which escapes task text and adds only b, i, br, font and a tags.
-    box.innerHTML = formatChat(r.preview).replace(/@@([^@]+)@@/g, "<span class='mention'>@$1</span>") + (r.cards || []).map(summaryCardHtml).join("");
+    box.innerHTML = (r.messages || []).map(function (m) {
+      return (m.text ? "<div class='gmsg'>" + formatChat(m.text).replace(/@@([^@]+)@@/g, "<span class='mention'>@$1</span>") + "</div>" : "") +
+        m.cards.map(summaryCardHtml).join("");
+    }).join("");
     box.style.display = "block";
   }).catch(function (err) { $("f-summaryPreviewMsg").textContent = err.message; });
 });

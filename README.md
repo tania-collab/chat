@@ -43,26 +43,23 @@ Messages about one task share a Google Chat thread. To tell what changed, the ap
 the 300 most recently seen tasks per chat. Messages still on an earlier default switch to the current one;
 edited messages stay as written.
 
-**Summary** (per chat, in its Settings): the greeting and one line per past-due or coming-up task tagging whoever has the next step and saying what it is (@mentioned when their
-chat id is on file under People), then a card per section, each task in two lines:
+**Summary** (per chat, in its Settings): a few messages in a row. Each of past due and coming up is a card, then a
+short line under it @mentioning the people with the next step on those tasks (when their chat id is on file under
+People) and saying what to do; no due date, quiet and the closing line follow, untagged and collapsed:
 
 ```
 Happy Monday, zMarketing. Here's the week ahead.
-🔴 @Laura E. → Get attendee list · PTN 2026 RPM Franchise Conference (12 days overdue)
-🔴 @Tim Wallace → Close it or set a new date · NAA 2027 Call for Presentations (9 days overdue)
-🗓️ @Athina Gkouziadi → Add name and dates to title · NARPM Broker Owner floorplan (due Thu)
-
-┌ 🔴 Past due · 3 ─ Already done? Close it in zInspector so it drops off. ┐
+┌ 🔴 Past due · 3 ─ Due date passed, task still open ────────────────────┐
 │ PTN – 2026 RPM Franchise Conference, October 25 - 27, Dallas TX  [Open] │
 │ 12 days overdue · Laura E. (next to-do) · Next: Get attendee list (5 of 6)
 └──────────────────────────────────────────────────────────────────────────┘
+👆 @Laura E. · @Tim Wallace: already done? Close it in zInspector so it drops off. Still on it? Set a new date.
 ┌ 🗓️ Coming up · 2 ─ Due in the next 10 days ─────────────────────────────┐
 │ Fwd: NARPM Broker Owner floorplan – meet 11-12 to pick booth     [Open] │
 │ due Thu · Highest priority · Athina G. (next to-do)                      │
 └──────────────────────────────────────────────────────────────────────────┘
-┌ 💤 Quiet · 5 ─ No activity for 14+ days. Still on your radar? (collapsed)┐
-Plus 74 older tasks with no activity for over 3 months. Worth a clean-up? Conferences (40), …
-Anything stuck, or already done? Reply in this thread.        [Open the task list]
+👆 @Athina Gkouziadi · @Laura E.: still on track? If plans changed, update the due date.
+┌ 📅 No due date · 3 new ┐ ┌ 💤 Quiet · 5 ┐ (collapsed)   Plus 74 older… · [Open the task list]
 ```
 
 Priority shows only when it's high or highest; the area shows when the summary covers more than one. Slack gets the same summary as text. Each chat chooses:
