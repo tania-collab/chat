@@ -234,3 +234,19 @@ test("an unknown property name or a refused key is explained when saving", async
     assert.deepEqual(byLink.summary.properties[0].ids, [903925]);
   });
 });
+
+test("the property picker searches zInspector's properties by name", async () => {
+  const env = { ...makeEnv(), ZINSPECTOR_API_KEY: "KEY" };
+  await withZinspector(async () => {
+    const found = await (await admin(env, "GET", "/api/properties?q=bizdev")).json();
+    assert.deepEqual(found, [
+      { id: 2962118, name: "Marketing.BizDev.Enterprise" },
+      { id: 2206214, name: "Marketing.BizDev.Strategic" },
+    ]);
+    assert.equal((await admin(env, "GET", "/api/properties?q=b")).status, 400);
+    assert.equal((await admin(makeEnv(), "GET", "/api/properties?q=bizdev")).status, 400); // no API key
+    const picked = { onlyProperties: true, properties: found.map((p) => ({ label: p.name, name: p.name, ids: [p.id] })) };
+    const c = await (await admin(env, "POST", "/api/connections", { name: "Mkt", platform: "google-chat", chatUrl: GCHAT_URL, summary: picked })).json();
+    assert.deepEqual(c.summary.properties.map((p) => p.ids[0]), [2962118, 2206214]);
+  });
+});
