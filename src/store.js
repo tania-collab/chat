@@ -1,6 +1,7 @@
 // Connections, settings and delivery logs, kept in the Workers KV namespace bound as RELAY.
 
 import { PLATFORMS, DEFAULT_COMPLETED, DEFAULT_TASK_URL, EVENTS, MAX_TEMPLATE, AUDIENCES, DEFAULT_AUDIENCE, ALERTS } from "./messages.js";
+import { SCHEDULES, SUMMARY_DAYS, OVERDUE_WITHIN, SUMMARY_DEFAULTS, MAX_PROPERTIES, summaryOf } from "./digest.js";
 
 const LOG_SIZE = 20;
 const MAX_PEOPLE = 5000;
@@ -79,7 +80,31 @@ export function cleanConnection(input, existing = {}, by = null) {
         Object.entries(ALERTS).map(([k, a]) => [k, typeof input.alerts?.[k] === "boolean" ? input.alerts[k] : a.on]),
       ),
       templates,
+      summary: cleanSummary(input.summary, summaryOf(existing)),
     },
+  };
+}
+
+// The summary's settings; `properties` arrive already looked up (worker.js, summary.js resolveProperties).
+function cleanSummary(input, current) {
+  if (!input || typeof input !== "object") return current;
+  const flag = (k) => (typeof input[k] === "boolean" ? input[k] : current[k]);
+  const properties = Array.isArray(input.properties)
+    ? input.properties.slice(0, MAX_PROPERTIES).map((p) => ({
+        label: String(p.label || p.name || "").slice(0, 200),
+        name: String(p.name || "").slice(0, 200),
+        ids: (Array.isArray(p.ids) ? p.ids : []).map(Number).filter(Number.isFinite).slice(0, MAX_PROPERTIES),
+      }))
+    : current.properties;
+  return {
+    schedule: SCHEDULES[input.schedule] ? input.schedule : current.schedule,
+    days: SUMMARY_DAYS.includes(Number(input.days)) ? Number(input.days) : current.days || SUMMARY_DEFAULTS.days,
+    onlyProperties: flag("onlyProperties"),
+    properties,
+    onlyDated: flag("onlyDated"),
+    includeOverdue: flag("includeOverdue"),
+    overdueWithin: OVERDUE_WITHIN.includes(Number(input.overdueWithin)) ? Number(input.overdueWithin) : current.overdueWithin,
+    onlyAssigned: flag("onlyAssigned"),
   };
 }
 

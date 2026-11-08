@@ -160,7 +160,6 @@ export const ALERTS = {
   completed: { label: "Finished tasks (a done status)", on: true },
   changes: { label: "Other changes (status, dates, priority…)", on: false },
   messages: { label: "New messages on a task", on: false },
-  digest: { label: "Weekly digest (Mondays 8:30am Pacific)", on: true },
 };
 
 export function alertsOf(connection) {

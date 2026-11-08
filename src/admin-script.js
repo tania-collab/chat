@@ -12,7 +12,7 @@ var CHAT_LINK = {
     how: "In Slack, create an app with Incoming Webhooks turned on, add one for the channel, then copy its link." }
 };
 var KIND_LABEL = {
-  test: "Test message", digest: "Weekly digest", "task.created": "New task", "task.assigned": "Newly assigned",
+  test: "Test message", digest: "Summary", "task.created": "New task", "task.assigned": "Newly assigned",
   "task.updated": "Update", "task.completed": "Finished", "task.message.created": "New message",
   "report.distributed": "Report sent", "zdata.changed": "zData change"
 };
@@ -147,11 +147,11 @@ function connectionCard(c) {
   ].concat(body, [
     el("div", { "class": "row", style: "margin-top:12px" }, [
       h.zinspectorReached ? el("button", { text: "Send a test message", on: { click: sendTest } }) : null,
-      el("button", { text: "Send this week's digest", on: { click: function (ev) {
+      el("button", { text: "Send the summary now", on: { click: function (ev) {
         var b = ev.target; b.disabled = true; flash("Sending…", true);
         call("POST", "/api/connections/" + c.id + "/digest").then(function (r) {
-          if (r.empty) flash("Nothing to report yet: no open tasks and a quiet week.", true);
-          else flash(r.ok ? "Digest sent. Check the chat." : PLATFORM[c.platform] + " didn't accept it (" + r.status + "): " + r.detail, r.ok);
+          if (r.empty) flash("Nothing to list: no open tasks match this chat's summary settings.", true);
+          else flash(r.ok ? "Summary sent. Check the chat." : "Not sent (" + r.status + "): " + r.detail, r.ok);
         }).catch(function (err) { flash(err.message, false); }).then(function () { b.disabled = false; });
       } } }),
       el("button", { text: "History", on: { click: function () {
@@ -234,6 +234,25 @@ function openForm(c) {
     box.checked = c && c.alerts ? !!c.alerts[k] : state.alerts[k].on;
     return el("label", {}, [box, document.createTextNode(" " + state.alerts[k].label)]);
   }));
+  var s = c && c.summary ? c.summary : { schedule: "weekly", days: 7, onlyProperties: false, properties: [], onlyDated: true, includeOverdue: true, onlyAssigned: true };
+  $("f-schedule").replaceChildren.apply($("f-schedule"), Object.keys(state.schedules).map(function (k) {
+    return el("option", { value: k, text: state.schedules[k] });
+  }));
+  $("f-schedule").value = s.schedule;
+  $("f-days").replaceChildren.apply($("f-days"), state.summaryDays.map(function (d) {
+    return el("option", { value: String(d), text: d === 1 ? "tomorrow" : "the next " + d + " days" });
+  }));
+  $("f-days").value = String(s.days);
+  $("f-onlyProperties").checked = !!s.onlyProperties;
+  $("f-properties").value = (s.properties || []).map(function (p) { return p.label; }).join("\n");
+  $("f-onlyDated").checked = !!s.onlyDated;
+  $("f-includeOverdue").checked = !!s.includeOverdue;
+  $("f-overdueWithin").replaceChildren.apply($("f-overdueWithin"), state.overdueWithin.map(function (d) {
+    return el("option", { value: String(d), text: d ? d + " days" : "any time (all)" });
+  }));
+  $("f-overdueWithin").value = String(s.overdueWithin == null ? 30 : s.overdueWithin);
+  $("f-onlyAssigned").checked = !!s.onlyAssigned;
+  showSummary();
   templates = {};
   state.events.forEach(function (e) { templates[e.key] = c && c.templates && c.templates[e.key] != null ? c.templates[e.key] : e.template; });
   $("f-event").replaceChildren.apply($("f-event"), state.events.map(function (e) { return el("option", { value: e.key, text: e.label }); }));
@@ -335,11 +354,32 @@ $("f-template").addEventListener("input", function () { templates[$("f-event").v
 $("f-reset").addEventListener("click", function () {
   var e = eventInfo(); templates[e.key] = e.template; showEvent();
 });
+function showSummary() {
+  var on = $("f-schedule").value !== "off";
+  $("f-overdueWithinBox").style.display = $("f-includeOverdue").checked ? "flex" : "none";
+  ["f-days", "f-onlyProperties", "f-onlyDated", "f-includeOverdue", "f-overdueWithin", "f-onlyAssigned", "f-properties"].forEach(function (id) { $(id).disabled = !on; });
+  $("f-propertiesBox").style.display = $("f-onlyProperties").checked ? "block" : "none";
+  $("f-summarySource").textContent = !on ? "" : state.summaryReadsZinspector
+    ? ($("f-onlyProperties").checked
+      ? "Read from zInspector when it's sent, so it lists every matching open task."
+      : "Choose properties to read the full list from zInspector. Without them, it lists only the tasks zInspector has sent this chat.")
+    : "Lists the tasks zInspector has sent this chat so far. To list every open task, add a zInspector API key (see the guide).";
+}
+$("f-schedule").addEventListener("change", showSummary);
+$("f-onlyProperties").addEventListener("change", showSummary);
+$("f-includeOverdue").addEventListener("change", showSummary);
+
 $("form").addEventListener("submit", function (ev) {
   ev.preventDefault();
   var body = {
     name: $("f-name").value, platform: $("f-platform").value, chatUrl: $("f-chatUrl").value, token: $("f-token").value,
     only: $("f-only").value, templates: templates,
+    summary: {
+      schedule: $("f-schedule").value, days: Number($("f-days").value), onlyProperties: $("f-onlyProperties").checked,
+      propertyLines: $("f-properties").value.split("\n"), onlyDated: $("f-onlyDated").checked,
+      includeOverdue: $("f-includeOverdue").checked, overdueWithin: Number($("f-overdueWithin").value),
+      onlyAssigned: $("f-onlyAssigned").checked
+    },
     alerts: Object.fromEntries(Array.prototype.map.call($("f-alerts").querySelectorAll("input"), function (b) {
       return [b.getAttribute("data-alert"), b.checked];
     }))
