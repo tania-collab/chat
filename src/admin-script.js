@@ -264,7 +264,7 @@ function openForm(c) {
     return el("option", { value: String(d), text: d ? "no activity for " + d + "+ days" : "off" });
   }));
   $("f-quietDays").value = String(s.quietDays == null ? 14 : s.quietDays);
-  $("f-intro").value = s.intro || state.summaryIntro[s.schedule] || state.summaryIntro.daily;
+  $("f-intro").value = s.intro || (state.summaryIntro[s.schedule] || state.summaryIntro.daily)[0];
   $("f-introDetails").replaceChildren.apply($("f-introDetails"), state.introDetails.map(function (d) {
     return el("button", { type: "button", text: d, on: { click: function () { insertInto($("f-intro"), "[" + d + "]"); } } });
   }));
@@ -427,7 +427,7 @@ function insertInto(input, token) {
 // The opening line as saved: empty when it's still a default, so it follows the schedule.
 function introValue() {
   var v = $("f-intro").value.trim();
-  return Object.keys(state.summaryIntro).some(function (k) { return state.summaryIntro[k] === v; }) ? "" : v;
+  return Object.keys(state.summaryIntro).some(function (k) { return state.summaryIntro[k].indexOf(v) >= 0; }) ? "" : v;
 }
 function summaryForm() {
   var s = {
@@ -453,7 +453,7 @@ $("f-summaryPreviewBtn").addEventListener("click", function () {
 });
 $("f-schedule").addEventListener("change", function () {
   // A default opening line follows the schedule (Good morning / Happy Monday).
-  if (!introValue() && state.summaryIntro[$("f-schedule").value]) $("f-intro").value = state.summaryIntro[$("f-schedule").value];
+  if (!introValue() && state.summaryIntro[$("f-schedule").value]) $("f-intro").value = state.summaryIntro[$("f-schedule").value][0];
 });
 
 function showSummary() {
