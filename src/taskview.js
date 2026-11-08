@@ -20,7 +20,9 @@ export function snapshotOf(data = {}) {
     type: text(data.type),
     description: text(data.description).slice(0, 500),
     next: text(data.nextToDo?.name ?? data.nextToDo),
-    // For the summary's property filter.
+    // For the summary: who to list a task under when nobody is assigned, and its property.
+    nextPerson: personOf(data.nextToDo),
+    manager: personOf(data.manager),
     propertyName: text(data.propertyName),
     propertyId: data.propertyId ?? data.property?.id ?? (typeof data.property === "number" ? data.property : null),
   };
@@ -227,6 +229,12 @@ function pick(obj, paths) {
     if (v != null && v !== "") return v;
   }
   return undefined;
+}
+
+function personOf(p) {
+  if (!p) return null;
+  const name = text(p.name ?? p);
+  return name ? { name, email: p.email || "" } : null;
 }
 
 function personKey(p) {

@@ -1,7 +1,7 @@
 // Connections, settings and delivery logs, kept in the Workers KV namespace bound as RELAY.
 
 import { PLATFORMS, DEFAULT_COMPLETED, DEFAULT_TASK_URL, EVENTS, MAX_TEMPLATE, AUDIENCES, DEFAULT_AUDIENCE, ALERTS } from "./messages.js";
-import { SCHEDULES, SUMMARY_DAYS, OVERDUE_WITHIN, SUMMARY_DEFAULTS, MAX_PROPERTIES, summaryOf } from "./digest.js";
+import { SCHEDULES, SUMMARY_DAYS, OVERDUE_WITHIN, OWNERS, SUMMARY_DEFAULTS, MAX_PROPERTIES, summaryOf } from "./digest.js";
 
 const LOG_SIZE = 20;
 const MAX_PEOPLE = 5000;
@@ -104,7 +104,7 @@ export function cleanSummary(input, current) {
     onlyDated: flag("onlyDated"),
     includeOverdue: flag("includeOverdue"),
     overdueWithin: OVERDUE_WITHIN.includes(Number(input.overdueWithin)) ? Number(input.overdueWithin) : current.overdueWithin,
-    onlyAssigned: flag("onlyAssigned"),
+    owners: OWNERS[input.owners] ? input.owners : current.owners,
     intro: typeof input.intro === "string" ? input.intro.trim().slice(0, 300) : current.intro,
   };
 }

@@ -168,13 +168,17 @@ export const ADMIN_HTML = String.raw`<!doctype html>
     </div>
     <div class="checks" style="margin-top:8px">
       <label><input type="checkbox" id="f-onlyDated"> Only tasks with a due date</label>
-      <label><input type="checkbox" id="f-onlyAssigned"> Only tasks with someone assigned</label>
       <label><input type="checkbox" id="f-includeOverdue"> Include overdue tasks</label>
     </div>
     <div class="row" id="f-overdueWithinBox" style="margin:4px 0 0 24px">
       <label for="f-overdueWithin" style="margin:0">overdue in the last</label>
       <select id="f-overdueWithin" style="width:auto"></select>
       <span class="hint">so tasks forgotten long ago stay out</span>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label for="f-owners" style="margin:0">Whose tasks</label>
+      <select id="f-owners" style="width:auto"></select>
+      <span class="hint">each task is listed under the first of these people it has</span>
     </div>
     <div class="hint" id="f-summarySource"></div>
     <label for="f-intro">Opening line <span class="hint">click a detail to add it; the people and their tasks follow, each person @mentioned</span></label>

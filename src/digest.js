@@ -21,6 +21,12 @@ export const SUMMARY_DAYS = [1, 3, 7, 14, 30];
 // How far back overdue tasks are listed (0 = all), so tasks forgotten long ago don't fill the list.
 export const OVERDUE_WITHIN = [7, 30, 90, 0];
 export const MAX_PROPERTIES = 20;
+// Whose tasks the summary lists; each task goes under the first of these people it has.
+export const OWNERS = {
+  assigned: "Assigned only",
+  "assigned-or-next": "Assigned, or the next to-do",
+  anyone: "Assigned, next to-do, or the manager",
+};
 export const SUMMARY_DEFAULTS = {
   schedule: "weekly",
   days: 7,
@@ -29,15 +35,17 @@ export const SUMMARY_DEFAULTS = {
   onlyDated: true,
   includeOverdue: true,
   overdueWithin: 30,
-  onlyAssigned: true,
+  owners: "assigned-or-next",
   intro: "", // the opening line; empty = DEFAULT_INTRO for the schedule
 };
 
 // A chat's summary settings. Chats from before the summary had the weekly digest on unless turned off.
 export function summaryOf(connection) {
-  const saved = connection.summary || {};
+  const { onlyAssigned, ...saved } = connection.summary || {};
   const schedule = SCHEDULES[saved.schedule] ? saved.schedule : connection.alerts?.digest === false ? "off" : SUMMARY_DEFAULTS.schedule;
-  return { ...SUMMARY_DEFAULTS, ...saved, schedule };
+  // "Only tasks with someone assigned" was a checkbox before the owners choice.
+  const owners = OWNERS[saved.owners] ? saved.owners : onlyAssigned === true ? "assigned" : onlyAssigned === false ? "anyone" : SUMMARY_DEFAULTS.owners;
+  return { ...SUMMARY_DEFAULTS, ...saved, schedule, owners };
 }
 
 // True when a summary on this schedule is due: 8am hour Pacific (the cron runs at 15:30 and 16:30 UTC so one
@@ -71,7 +79,8 @@ export function selectTasks(tasks, summary, settings = {}, now = new Date()) {
   return tasks
     .filter((t) => !closed.has(String(t.status).toLowerCase()))
     .filter((t) => !summary.onlyProperties || onProperties(t, summary.properties))
-    .filter((t) => !summary.onlyAssigned || t.assignee)
+    .map((t) => ({ ...t, owner: ownerOf(t, summary.owners) }))
+    .filter((t) => t.owner)
     .map((t) => ({ ...t, ...dueInfo(t.due, today) }))
     .filter((t) => {
       if (!t.dueDate) return !summary.onlyDated;
@@ -143,6 +152,15 @@ function fill(template, values) {
   return String(template).replace(/\[([^\]]+)\]/g, (m, k) => (Object.hasOwn(values, k) ? values[k] : m));
 }
 
+// Who a task is listed under, and why: {person, role}; null when nobody fits the chat's owners choice.
+export function ownerOf(t, owners) {
+  const next = t.nextPerson || (t.next ? { name: t.next } : null);
+  if (t.assignee) return { person: t.assignee, role: "assigned" };
+  if (owners !== "assigned" && next?.name) return { person: next, role: "next" };
+  if (owners === "anyone" && t.manager?.name) return { person: t.manager, role: "manager" };
+  return null;
+}
+
 // "🔴 <link|Title> — 3 days overdue · In Progress · next: @Laura": a colored dot for how soon, the title linked,
 // when, the status once past New, and who has the next to-do when that's someone else.
 function taskLine(t, link, tag) {
@@ -150,7 +168,8 @@ function taskLine(t, link, tag) {
   const dot = t.overdue ? "🔴" : t.daysLeft != null && t.daysLeft <= 1 ? "🟠" : t.dueDate ? "🔹" : "▫️";
   const nextPerson = t.nextPerson || (t.next ? { name: t.next } : null);
   const nextIsOther = nextPerson?.name && nextPerson.name !== t.assignee?.name;
-  const extra = [t.status && !/^new$/i.test(t.status) ? t.status : "", nextIsOther && t.assignee ? `next: ${tag(nextPerson)}` : ""];
+  const role = t.owner?.role === "next" ? "you're next" : t.owner?.role === "manager" ? "you manage it" : "";
+  const extra = [t.status && !/^new$/i.test(t.status) ? t.status : "", nextIsOther && t.assignee ? `next: ${tag(nextPerson)}` : "", role];
   return [`${dot} ${link ? `<${link}|${title}>` : `*${title}*`}`, [t.note, ...extra].filter(Boolean).join(" · ")].filter(Boolean).join(" — ");
 }
 
@@ -159,9 +178,10 @@ function taskLine(t, link, tag) {
 function groupByPerson(open) {
   const byName = new Map();
   for (const t of open) {
-    const person = t.assignee || (t.next ? { name: t.next } : null);
+    const person = t.owner?.person || null;
     const name = person?.name || "Unassigned";
-    if (!byName.has(name)) byName.set(name, { name, person: t.assignee, tasks: [] });
+    if (!byName.has(name)) byName.set(name, { name, person, tasks: [] });
+    else if (!byName.get(name).person?.email && person?.email) byName.get(name).person = person;
     byName.get(name).tasks.push(t);
   }
   const order = (t) => (t.overdue ? 0 : t.dueDate ? 1 : 2);

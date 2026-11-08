@@ -64,8 +64,11 @@ It's a message rather than a card because chat cards can't @mention anyone. Each
 - **Only these properties**: with a zInspector API key, search zInspector's properties by name and tick the ones to
   include. Without a key, type them one per line as zInspector names them (`Marketing.Conferences`), ending with `*`
   for every property that starts with it (`Marketing.BizDev*`).
-- **Only tasks with a due date**, **Only tasks with someone assigned**, and **Include overdue tasks**, overdue in the
-  last 7, 30 (default) or 90 days or any time, so tasks forgotten long ago don't fill the list.
+- **Only tasks with a due date**, and **Include overdue tasks**, overdue in the last 7, 30 (default) or 90 days or any
+  time, so tasks forgotten long ago don't fill the list.
+- **Whose tasks**: assigned only; assigned or the next to-do (default); or assigned, next to-do or the manager. Each
+  task is listed under the first of these people it has, and says "you're next" or "you manage it" when that person
+  isn't the assignee.
 
 - **Opening line**: editable, with [Chat name], [Day], [Week], [Days], [Due count] and [Overdue count].
 
