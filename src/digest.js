@@ -20,6 +20,9 @@ export const SCHEDULES = {
 export const SUMMARY_DAYS = [1, 3, 7, 14, 30];
 // How far back overdue tasks are listed (0 = all), so tasks forgotten long ago don't fill the list.
 export const OVERDUE_WITHIN = [7, 30, 90, 0];
+// "Going quiet": open tasks with no activity for this many days (0 = off), whatever their due date.
+export const QUIET_DAYS = [7, 14, 30, 60, 0];
+const QUIET_PER_PERSON = 5;
 export const MAX_PROPERTIES = 20;
 // Whose tasks the summary lists; each task goes under the first of these people it has.
 export const OWNERS = {
@@ -35,6 +38,7 @@ export const SUMMARY_DEFAULTS = {
   onlyDated: true,
   includeOverdue: true,
   overdueWithin: 30,
+  quietDays: 14,
   owners: "assigned-or-next",
   intro: "", // the opening line; empty = DEFAULT_INTRO for the schedule
 };
@@ -74,6 +78,15 @@ export function onProperties(task, properties) {
 
 // The tasks a chat's summary lists: open, then the chat's filters, then the due window.
 export function selectTasks(tasks, summary, settings = {}, now = new Date()) {
+  return followed(tasks, summary, settings, now).filter((t) => {
+      if (!t.dueDate) return !summary.onlyDated;
+      if (t.overdue) return summary.includeOverdue && (!summary.overdueWithin || -t.daysLeft <= summary.overdueWithin);
+      return t.daysLeft <= summary.days;
+    });
+}
+
+// Open tasks the chat follows (properties, owners), with their due info, before the due-date filters.
+function followed(tasks, summary, settings, now) {
   const today = localDate(now);
   const closed = new Set([...(settings.completedStatuses || DEFAULT_COMPLETED).split(","), ...NOT_OPEN].map((s) => s.trim().toLowerCase()));
   return tasks
@@ -81,12 +94,18 @@ export function selectTasks(tasks, summary, settings = {}, now = new Date()) {
     .filter((t) => !summary.onlyProperties || onProperties(t, summary.properties))
     .map((t) => ({ ...t, owner: ownerOf(t, summary.owners) }))
     .filter((t) => t.owner)
-    .map((t) => ({ ...t, ...dueInfo(t.due, today) }))
-    .filter((t) => {
-      if (!t.dueDate) return !summary.onlyDated;
-      if (t.overdue) return summary.includeOverdue && (!summary.overdueWithin || -t.daysLeft <= summary.overdueWithin);
-      return t.daysLeft <= summary.days;
-    });
+    .map((t) => ({ ...t, ...dueInfo(t.due, today) }));
+}
+
+// Followed tasks with no activity for the chat's quietDays or more, oldest first: the closest thing to a missed
+// deadline on tasks without one. `listed` (ids already in the due list) are left out.
+export function selectQuiet(tasks, summary, settings = {}, now = new Date(), listed = new Set()) {
+  if (!summary.quietDays) return [];
+  return followed(tasks, summary, settings, now)
+    .filter((t) => !listed.has(t.id) && t.lastActivity)
+    .map((t) => ({ ...t, quietDays: Math.floor((now.getTime() - Date.parse(t.lastActivity)) / DAY_MS) }))
+    .filter((t) => t.quietDays >= summary.quietDays)
+    .map((t) => ({ ...t, quiet: true }));
 }
 
 // The summary as one chat message (text, so people can be @mentioned: chat cards can't), or null when there's
@@ -95,7 +114,9 @@ export function selectTasks(tasks, summary, settings = {}, now = new Date()) {
 export function buildDigest(connection, tasks, settings = {}, now = new Date(), { pulse = false, preview = false } = {}) {
   const summary = summaryOf(connection);
   const today = localDate(now);
-  const open = selectTasks(tasks, summary, settings, now);
+  const due = selectTasks(tasks, summary, settings, now);
+  const quiet = selectQuiet(tasks, summary, settings, now, new Set(due.map((t) => t.id)));
+  const open = [...due, ...quiet];
   const weekAgo = now.getTime() - 7 * DAY_MS;
   const created = pulse ? tasks.filter((t) => t.createdAt && Date.parse(t.createdAt) >= weekAgo).length : 0;
   const finished = pulse ? tasks.filter((t) => t.finishedAt && Date.parse(t.finishedAt) >= weekAgo).length : 0;
@@ -106,9 +127,9 @@ export function buildDigest(connection, tasks, settings = {}, now = new Date(), 
     const m = mentionFor(person, settings.people, connection.platform) || "*Unassigned*";
     return preview && m.startsWith("<") ? `@@${person.name}@@` : m;
   };
-  const overdue = open.filter((t) => t.overdue).length;
-  const coming = open.filter((t) => t.dueDate && !t.overdue).length;
-  const undated = open.length - coming - overdue;
+  const overdue = due.filter((t) => t.overdue).length;
+  const coming = due.filter((t) => t.dueDate && !t.overdue).length;
+  const undated = due.length - coming - overdue;
   const values = {
     "Chat name": connection.name,
     Day: longDay(today),
@@ -122,17 +143,26 @@ export function buildDigest(connection, tasks, settings = {}, now = new Date(), 
     coming && `${coming} due ${summary.days === 1 ? "by tomorrow" : `in the next ${summary.days} days`}`,
     overdue && `${overdue} overdue`,
     undated && `${undated} with no due date`,
+    quiet.length && `${quiet.length} going quiet (no activity for ${summary.quietDays}+ days)`,
   ].filter(Boolean);
 
   const sections = groupByPerson(open).map((p) => {
-    const lines = p.tasks.slice(0, TASKS_PER_PERSON).map((t) => taskLine(t, taskUrl(t.id, settings.taskUrl), tag));
-    if (p.tasks.length > TASKS_PER_PERSON) lines.push(`   _and ${p.tasks.length - TASKS_PER_PERSON} more_`);
-    const size = `${p.tasks.length} ${p.tasks.length === 1 ? "task" : "tasks"}${p.overdue ? `, ${p.overdue} overdue` : ""}`;
+    const line = (t) => taskLine(t, taskUrl(t.id, settings.taskUrl), tag);
+    const dueTasks = p.tasks.filter((t) => !t.quiet);
+    const quietTasks = p.tasks.filter((t) => t.quiet);
+    const lines = dueTasks.slice(0, TASKS_PER_PERSON).map(line);
+    if (dueTasks.length > TASKS_PER_PERSON) lines.push(`   _and ${dueTasks.length - TASKS_PER_PERSON} more_`);
+    lines.push(...quietTasks.slice(0, QUIET_PER_PERSON).map(line));
+    if (quietTasks.length > QUIET_PER_PERSON) lines.push(`   _and ${quietTasks.length - QUIET_PER_PERSON} more going quiet_`);
+    const size = [
+      dueTasks.length && `${dueTasks.length} ${dueTasks.length === 1 ? "task" : "tasks"}${p.overdue ? `, ${p.overdue} overdue` : ""}`,
+      quietTasks.length && `${quietTasks.length} going quiet`,
+    ].filter(Boolean).join(" · ");
     return [`${p.person ? tag(p.person) : `*${p.name}*`} · ${size}`, ...lines].join("\n");
   });
   const footer = [
     pulse ? `Last week: ${created} new · ${finished} finished${finished ? " 🎉" : ""}` : "",
-    open.length && !overdue && summary.includeOverdue ? "Nothing overdue 👏" : "",
+    due.length && !overdue && summary.includeOverdue ? "Nothing overdue 👏" : "",
     `<${DASHBOARD}|Open zInspector>`,
   ].filter(Boolean);
   const text = [intro, counts.length ? `_${counts.join(" · ")}_` : "", ...sections, footer.join("\n")]
@@ -165,12 +195,20 @@ export function ownerOf(t, owners) {
 // when, the status once past New, and who has the next to-do when that's someone else.
 function taskLine(t, link, tag) {
   const title = titleOf(t).replace(/[<>|]/g, " ");
-  const dot = t.overdue ? "🔴" : t.daysLeft != null && t.daysLeft <= 1 ? "🟠" : t.dueDate ? "🔹" : "▫️";
+  const dot = t.quiet ? "💤" : t.overdue ? "🔴" : t.daysLeft != null && t.daysLeft <= 1 ? "🟠" : t.dueDate ? "🔹" : "▫️";
   const nextPerson = t.nextPerson || (t.next ? { name: t.next } : null);
   const nextIsOther = nextPerson?.name && nextPerson.name !== t.assignee?.name;
   const role = t.owner?.role === "next" ? "you're next" : t.owner?.role === "manager" ? "you manage it" : "";
   const extra = [t.status && !/^new$/i.test(t.status) ? t.status : "", nextIsOther && t.assignee ? `next: ${tag(nextPerson)}` : "", role];
-  return [`${dot} ${link ? `<${link}|${title}>` : `*${title}*`}`, [t.note, ...extra].filter(Boolean).join(" · ")].filter(Boolean).join(" — ");
+  const when = t.quiet ? `no activity for ${quietFor(t.quietDays)}` : t.note;
+  return [`${dot} ${link ? `<${link}|${title}>` : `*${title}*`}`, [when, ...extra].filter(Boolean).join(" · ")].filter(Boolean).join(" — ");
+}
+
+// "9 days", "3 weeks", "4 months".
+function quietFor(days) {
+  if (days < 14) return `${days} days`;
+  if (days < 60) return `${Math.floor(days / 7)} weeks`;
+  return `${Math.floor(days / 30)} months`;
 }
 
 // People with the most overdue, then the most tasks, first; each person's tasks overdue first, then by due
@@ -184,12 +222,14 @@ function groupByPerson(open) {
     else if (!byName.get(name).person?.email && person?.email) byName.get(name).person = person;
     byName.get(name).tasks.push(t);
   }
-  const order = (t) => (t.overdue ? 0 : t.dueDate ? 1 : 2);
+  const order = (t) => (t.quiet ? 3 : t.overdue ? 0 : t.dueDate ? 1 : 2);
   return [...byName.values()]
     .map((p) => ({
       ...p,
       overdue: p.tasks.filter((t) => t.overdue).length,
-      tasks: p.tasks.sort((a, b) => order(a) - order(b) || String(a.dueDate).localeCompare(String(b.dueDate))),
+      tasks: p.tasks.sort(
+        (a, b) => order(a) - order(b) || String(a.dueDate).localeCompare(String(b.dueDate)) || (b.quietDays || 0) - (a.quietDays || 0),
+      ),
     }))
     .sort((a, b) => b.overdue - a.overdue || b.tasks.length - a.tasks.length || a.name.localeCompare(b.name));
 }

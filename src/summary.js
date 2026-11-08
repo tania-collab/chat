@@ -102,6 +102,7 @@ export function taskFromApi(t, users = new Map()) {
     description: String(t.Description ?? "").slice(0, 500),
     next: String(t.NextToDoName ?? ""),
     propertyName: String(t.PropertyName ?? ""),
+    lastActivity: t.LastModified || null,
     propertyId: t.Property ?? null,
   };
 }

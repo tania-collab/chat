@@ -9,7 +9,7 @@
 
 import { DEFAULT_COMPLETED, buildMessage, buildPayload, cardFor, skipReason, SKIP_REASONS, AUDIENCES, ALERTS, alertsOf, eventKind, deliveryUrl, render, fieldPaths, templateFor, EVENTS, EXAMPLES, EXAMPLE_PREVIOUS, TEST_MESSAGE } from "./messages.js";
 import { snapshotOf, EXTRA_NAMES } from "./taskview.js";
-import { buildDigest, isSummaryTime, summaryOf, SCHEDULES, SUMMARY_DAYS, OVERDUE_WITHIN, OWNERS, DEFAULT_INTRO, INTRO_DETAILS } from "./digest.js";
+import { buildDigest, isSummaryTime, summaryOf, SCHEDULES, SUMMARY_DAYS, OVERDUE_WITHIN, QUIET_DAYS, OWNERS, DEFAULT_INTRO, INTRO_DETAILS } from "./digest.js";
 import { zinspectorConfigured, readsZinspector, openTasksOn, resolveProperties, searchProperties, ZinspectorError } from "./summary.js";
 import {
   getConnections,
@@ -32,7 +32,8 @@ function withDates(snapshot, previous, event, kind, settings) {
   const stillDone = done.includes(String(snapshot.status).toLowerCase());
   const createdAt = previous?.createdAt || (event.type === "task.created" ? now : null);
   const finishedAt = kind === "task.completed" ? now : stillDone ? previous?.finishedAt || null : null;
-  return { ...snapshot, createdAt, finishedAt };
+  // Each event is activity on the task, for the summary's "going quiet".
+  return { ...snapshot, createdAt, finishedAt, lastActivity: now };
 }
 
 export default {
@@ -243,6 +244,7 @@ async function api(request, env, url, user) {
       summaryDays: SUMMARY_DAYS,
       overdueWithin: OVERDUE_WITHIN,
       owners: OWNERS,
+      quietDays: QUIET_DAYS,
       summaryIntro: DEFAULT_INTRO,
       introDetails: INTRO_DETAILS,
       summaryReadsZinspector: zinspectorConfigured(env),

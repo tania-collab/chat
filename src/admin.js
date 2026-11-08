@@ -180,6 +180,11 @@ export const ADMIN_HTML = String.raw`<!doctype html>
       <select id="f-owners" style="width:auto"></select>
       <span class="hint">each task is listed under the first of these people it has</span>
     </div>
+    <div class="row" style="margin-top:8px">
+      <label for="f-quietDays" style="margin:0">Going quiet</label>
+      <select id="f-quietDays" style="width:auto"></select>
+      <span class="hint">also list open tasks nobody has touched for this long, due date or not</span>
+    </div>
     <div class="hint" id="f-summarySource"></div>
     <label for="f-intro">Opening line <span class="hint">click a detail to add it; the people and their tasks follow, each person @mentioned</span></label>
     <input type="text" id="f-intro">
